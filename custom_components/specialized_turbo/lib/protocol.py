@@ -11,7 +11,6 @@ UUID base encodes "TURBOHMI2017" in reverse ASCII in its lower bytes.
 
 from __future__ import annotations
 
-import struct
 from dataclasses import dataclass
 from enum import IntEnum
 from typing import NamedTuple
@@ -31,15 +30,15 @@ def _uuid(short: int) -> str:
 
 
 # Service UUIDs
-SERVICE_DATA_NOTIFY = _uuid(0x0003)   # Notification data service
+SERVICE_DATA_NOTIFY = _uuid(0x0003)  # Notification data service
 SERVICE_DATA_REQUEST = _uuid(0x0001)  # Request-read service
-SERVICE_DATA_WRITE = _uuid(0x0002)    # Write command service
+SERVICE_DATA_WRITE = _uuid(0x0002)  # Write command service
 
 # Characteristic UUIDs
-CHAR_NOTIFY = _uuid(0x0013)           # READ, NOTIFY — bike pushes telemetry here
-CHAR_REQUEST_WRITE = _uuid(0x0021)    # WRITE — send a 2-byte request here
-CHAR_REQUEST_READ = _uuid(0x0011)     # READ — read the response after writing to 0x0021
-CHAR_WRITE = _uuid(0x0012)            # WRITE — send commands (assist level, settings)
+CHAR_NOTIFY = _uuid(0x0013)  # READ, NOTIFY — bike pushes telemetry here
+CHAR_REQUEST_WRITE = _uuid(0x0021)  # WRITE — send a 2-byte request here
+CHAR_REQUEST_READ = _uuid(0x0011)  # READ — read the response after writing to 0x0021
+CHAR_WRITE = _uuid(0x0012)  # WRITE — send commands (assist level, settings)
 
 # Nordic Semiconductor BLE company ID (used in manufacturer advertising data)
 NORDIC_COMPANY_ID = 0x0059
@@ -54,15 +53,17 @@ ADVERTISING_MAGIC = b"TURBOHMI"
 
 class Sender(IntEnum):
     """Identifies the subsystem that produced a message."""
+
     BATTERY = 0x00
-    MOTOR = 0x01          # Motor / rider data
+    MOTOR = 0x01  # Motor / rider data
     BIKE_SETTINGS = 0x02
     UNKNOWN_03 = 0x03
-    BATTERY_2 = 0x04      # Secondary / range-extender battery (same channels as BATTERY)
+    BATTERY_2 = 0x04  # Secondary / range-extender battery (same channels as BATTERY)
 
 
 class BatteryChannel(IntEnum):
     """Channels for Sender.BATTERY (0x00) and Sender.BATTERY_2 (0x04)."""
+
     SIZE_WH = 0x00
     REMAIN_WH = 0x01
     HEALTH = 0x02
@@ -75,6 +76,7 @@ class BatteryChannel(IntEnum):
 
 class MotorChannel(IntEnum):
     """Channels for Sender.MOTOR (0x01)."""
+
     RIDER_POWER = 0x00
     CADENCE = 0x01
     SPEED = 0x02
@@ -88,6 +90,7 @@ class MotorChannel(IntEnum):
 
 class BikeSettingsChannel(IntEnum):
     """Channels for Sender.BIKE_SETTINGS (0x02)."""
+
     WHEEL_CIRCUMFERENCE = 0x00
     ASSIST_LEV1 = 0x03
     ASSIST_LEV2 = 0x04
@@ -98,6 +101,7 @@ class BikeSettingsChannel(IntEnum):
 
 class AssistLevel(IntEnum):
     """Assist mode enum — written or read via MotorChannel.ASSIST_LEVEL."""
+
     OFF = 0
     ECO = 1
     TRAIL = 2
@@ -111,7 +115,9 @@ class AssistLevel(IntEnum):
 
 def _int_from_bytes(data: bytes, offset: int, size: int) -> int:
     """Extract a little-endian unsigned integer of *size* bytes starting at *offset*."""
-    return int.from_bytes(data[offset : offset + size], byteorder="little", signed=False)
+    return int.from_bytes(
+        data[offset : offset + size], byteorder="little", signed=False
+    )
 
 
 # Lookup: (sender, channel) → (data_size_bytes, human_name, unit, conversion_fn)
@@ -123,6 +129,7 @@ _FIELD_DEFS: dict[tuple[int, int], FieldDefinition] = {}
 @dataclass(frozen=True, slots=True)
 class FieldDefinition:
     """Metadata for a single protocol field."""
+
     sender: int
     channel: int
     name: str
@@ -135,12 +142,19 @@ class FieldDefinition:
         return (self.sender, self.channel)
 
 
-def _reg(sender: int, channel: int, name: str, unit: str, size: int,
-         convert=None) -> FieldDefinition:
+def _reg(
+    sender: int, channel: int, name: str, unit: str, size: int, convert=None
+) -> FieldDefinition:
     if convert is None:
         convert = lambda v: v  # noqa: E731  identity
-    fd = FieldDefinition(sender=sender, channel=channel, name=name,
-                         unit=unit, data_size=size, convert=convert)
+    fd = FieldDefinition(
+        sender=sender,
+        channel=channel,
+        name=name,
+        unit=unit,
+        data_size=size,
+        convert=convert,
+    )
     _FIELD_DEFS[fd.key] = fd
     return fd
 
@@ -160,7 +174,14 @@ _reg(0x01, 0x00, "rider_power", "W", 2)
 _reg(0x01, 0x01, "cadence", "RPM", 2, lambda v: v / 10.0)
 _reg(0x01, 0x02, "speed", "km/h", 2, lambda v: v / 10.0)
 _reg(0x01, 0x04, "odometer", "km", 4, lambda v: v / 1000.0)
-_reg(0x01, 0x05, "assist_level", "", 2, lambda v: AssistLevel(v) if v in AssistLevel._value2member_map_ else v)
+_reg(
+    0x01,
+    0x05,
+    "assist_level",
+    "",
+    2,
+    lambda v: AssistLevel(v) if v in AssistLevel._value2member_map_ else v,
+)
 _reg(0x01, 0x07, "motor_temp", "°C", 1)
 _reg(0x01, 0x0C, "motor_power", "W", 2)
 _reg(0x01, 0x10, "peak_assist", "", 3)  # 3 bytes: ECO%, TRAIL%, TURBO%
@@ -178,8 +199,14 @@ _reg(0x02, 0x07, "acceleration", "%", 2, lambda v: (v - 3000) / 60.0)
 for _ch in list(BatteryChannel):
     _orig = _FIELD_DEFS.get((0x00, _ch))
     if _orig:
-        _reg(0x04, _ch, _orig.name.replace("battery_", "battery2_"),
-             _orig.unit, _orig.data_size, _orig.convert)
+        _reg(
+            0x04,
+            _ch,
+            _orig.name.replace("battery_", "battery2_"),
+            _orig.unit,
+            _orig.data_size,
+            _orig.convert,
+        )
 
 
 def get_field_def(sender: int, channel: int) -> FieldDefinition | None:
@@ -199,6 +226,7 @@ def all_field_defs() -> dict[tuple[int, int], FieldDefinition]:
 
 class ParsedMessage(NamedTuple):
     """Result of parsing a single BLE notification or read-response."""
+
     sender: int
     channel: int
     raw_value: int

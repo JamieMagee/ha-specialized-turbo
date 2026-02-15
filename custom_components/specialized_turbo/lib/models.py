@@ -34,16 +34,19 @@ class BatteryState:
     current_a: float | None = None
     charge_pct: int | None = None
 
-    _CHANNEL_MAP: dict[int, str] = field(default_factory=lambda: {
-        BatteryChannel.SIZE_WH: "capacity_wh",
-        BatteryChannel.REMAIN_WH: "remaining_wh",
-        BatteryChannel.HEALTH: "health_pct",
-        BatteryChannel.TEMP: "temp_c",
-        BatteryChannel.CHARGE_CYCLES: "charge_cycles",
-        BatteryChannel.VOLTAGE: "voltage_v",
-        BatteryChannel.CURRENT: "current_a",
-        BatteryChannel.CHARGE_PERCENT: "charge_pct",
-    }, repr=False)
+    _CHANNEL_MAP: dict[int, str] = field(
+        default_factory=lambda: {
+            BatteryChannel.SIZE_WH: "capacity_wh",
+            BatteryChannel.REMAIN_WH: "remaining_wh",
+            BatteryChannel.HEALTH: "health_pct",
+            BatteryChannel.TEMP: "temp_c",
+            BatteryChannel.CHARGE_CYCLES: "charge_cycles",
+            BatteryChannel.VOLTAGE: "voltage_v",
+            BatteryChannel.CURRENT: "current_a",
+            BatteryChannel.CHARGE_PERCENT: "charge_pct",
+        },
+        repr=False,
+    )
 
     def update(self, channel: int, value: Any) -> bool:
         """Update a field from a parsed message. Returns True if field was known."""
@@ -54,16 +57,20 @@ class BatteryState:
         return False
 
     def as_dict(self) -> dict[str, Any]:
-        return {k: v for k, v in {
-            "capacity_wh": self.capacity_wh,
-            "remaining_wh": self.remaining_wh,
-            "health_pct": self.health_pct,
-            "temp_c": self.temp_c,
-            "charge_cycles": self.charge_cycles,
-            "voltage_v": self.voltage_v,
-            "current_a": self.current_a,
-            "charge_pct": self.charge_pct,
-        }.items() if v is not None}
+        return {
+            k: v
+            for k, v in {
+                "capacity_wh": self.capacity_wh,
+                "remaining_wh": self.remaining_wh,
+                "health_pct": self.health_pct,
+                "temp_c": self.temp_c,
+                "charge_cycles": self.charge_cycles,
+                "voltage_v": self.voltage_v,
+                "current_a": self.current_a,
+                "charge_pct": self.charge_pct,
+            }.items()
+            if v is not None
+        }
 
 
 @dataclass
@@ -80,17 +87,20 @@ class MotorState:
     peak_assist: tuple[int, int, int] | None = None
     shuttle: int | None = None
 
-    _CHANNEL_MAP: dict[int, str] = field(default_factory=lambda: {
-        MotorChannel.RIDER_POWER: "rider_power_w",
-        MotorChannel.CADENCE: "cadence_rpm",
-        MotorChannel.SPEED: "speed_kmh",
-        MotorChannel.ODOMETER: "odometer_km",
-        MotorChannel.ASSIST_LEVEL: "assist_level",
-        MotorChannel.MOTOR_TEMP: "motor_temp_c",
-        MotorChannel.MOTOR_POWER: "motor_power_w",
-        MotorChannel.PEAK_ASSIST: "peak_assist",
-        MotorChannel.SHUTTLE: "shuttle",
-    }, repr=False)
+    _CHANNEL_MAP: dict[int, str] = field(
+        default_factory=lambda: {
+            MotorChannel.RIDER_POWER: "rider_power_w",
+            MotorChannel.CADENCE: "cadence_rpm",
+            MotorChannel.SPEED: "speed_kmh",
+            MotorChannel.ODOMETER: "odometer_km",
+            MotorChannel.ASSIST_LEVEL: "assist_level",
+            MotorChannel.MOTOR_TEMP: "motor_temp_c",
+            MotorChannel.MOTOR_POWER: "motor_power_w",
+            MotorChannel.PEAK_ASSIST: "peak_assist",
+            MotorChannel.SHUTTLE: "shuttle",
+        },
+        repr=False,
+    )
 
     def update(self, channel: int, value: Any) -> bool:
         """Update a field from a parsed message. Returns True if field was known."""
@@ -104,17 +114,21 @@ class MotorState:
         assist = self.assist_level
         if isinstance(assist, AssistLevel):
             assist = assist.name
-        return {k: v for k, v in {
-            "rider_power_w": self.rider_power_w,
-            "cadence_rpm": self.cadence_rpm,
-            "speed_kmh": self.speed_kmh,
-            "odometer_km": self.odometer_km,
-            "assist_level": assist,
-            "motor_temp_c": self.motor_temp_c,
-            "motor_power_w": self.motor_power_w,
-            "peak_assist": self.peak_assist,
-            "shuttle": self.shuttle,
-        }.items() if v is not None}
+        return {
+            k: v
+            for k, v in {
+                "rider_power_w": self.rider_power_w,
+                "cadence_rpm": self.cadence_rpm,
+                "speed_kmh": self.speed_kmh,
+                "odometer_km": self.odometer_km,
+                "assist_level": assist,
+                "motor_temp_c": self.motor_temp_c,
+                "motor_power_w": self.motor_power_w,
+                "peak_assist": self.peak_assist,
+                "shuttle": self.shuttle,
+            }.items()
+            if v is not None
+        }
 
 
 @dataclass
@@ -128,14 +142,17 @@ class BikeSettings:
     fake_channel: int | None = None
     acceleration_pct: float | None = None
 
-    _CHANNEL_MAP: dict[int, str] = field(default_factory=lambda: {
-        BikeSettingsChannel.WHEEL_CIRCUMFERENCE: "wheel_circumference_mm",
-        BikeSettingsChannel.ASSIST_LEV1: "assist_lev1_pct",
-        BikeSettingsChannel.ASSIST_LEV2: "assist_lev2_pct",
-        BikeSettingsChannel.ASSIST_LEV3: "assist_lev3_pct",
-        BikeSettingsChannel.FAKE_CHANNEL: "fake_channel",
-        BikeSettingsChannel.ACCELERATION: "acceleration_pct",
-    }, repr=False)
+    _CHANNEL_MAP: dict[int, str] = field(
+        default_factory=lambda: {
+            BikeSettingsChannel.WHEEL_CIRCUMFERENCE: "wheel_circumference_mm",
+            BikeSettingsChannel.ASSIST_LEV1: "assist_lev1_pct",
+            BikeSettingsChannel.ASSIST_LEV2: "assist_lev2_pct",
+            BikeSettingsChannel.ASSIST_LEV3: "assist_lev3_pct",
+            BikeSettingsChannel.FAKE_CHANNEL: "fake_channel",
+            BikeSettingsChannel.ACCELERATION: "acceleration_pct",
+        },
+        repr=False,
+    )
 
     def update(self, channel: int, value: Any) -> bool:
         """Update a field from a parsed message. Returns True if field was known."""
@@ -146,14 +163,18 @@ class BikeSettings:
         return False
 
     def as_dict(self) -> dict[str, Any]:
-        return {k: v for k, v in {
-            "wheel_circumference_mm": self.wheel_circumference_mm,
-            "assist_lev1_pct": self.assist_lev1_pct,
-            "assist_lev2_pct": self.assist_lev2_pct,
-            "assist_lev3_pct": self.assist_lev3_pct,
-            "fake_channel": self.fake_channel,
-            "acceleration_pct": self.acceleration_pct,
-        }.items() if v is not None}
+        return {
+            k: v
+            for k, v in {
+                "wheel_circumference_mm": self.wheel_circumference_mm,
+                "assist_lev1_pct": self.assist_lev1_pct,
+                "assist_lev2_pct": self.assist_lev2_pct,
+                "assist_lev3_pct": self.assist_lev3_pct,
+                "fake_channel": self.fake_channel,
+                "acceleration_pct": self.acceleration_pct,
+            }.items()
+            if v is not None
+        }
 
 
 @dataclass

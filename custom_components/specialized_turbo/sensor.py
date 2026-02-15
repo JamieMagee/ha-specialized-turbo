@@ -23,7 +23,7 @@ from homeassistant.const import (
     UnitOfSpeed,
     UnitOfTemperature,
 )
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo, format_mac
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -249,7 +249,4 @@ class SpecializedTurboSensor(
     @property
     def available(self) -> bool:
         """Return True if the coordinator has received at least one message."""
-        return (
-            super().available
-            and self.coordinator.snapshot.message_count > 0
-        )
+        return super().available and self.coordinator.snapshot.message_count > 0

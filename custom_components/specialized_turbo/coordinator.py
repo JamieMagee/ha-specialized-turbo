@@ -7,7 +7,6 @@ telemetry, and pushes updates to HA entities.
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 from bleak import BleakClient
 from bleak.backends.device import BLEDevice
@@ -18,7 +17,6 @@ from homeassistant.components.bluetooth.active_update_coordinator import (
 )
 from homeassistant.core import HomeAssistant, callback
 
-from .const import CONF_PIN, DOMAIN
 from .lib import (
     CHAR_NOTIFY,
     TelemetrySnapshot,
@@ -110,9 +108,7 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
         await client.start_notify(CHAR_NOTIFY, self._notification_handler)
         _LOGGER.info("Subscribed to telemetry notifications")
 
-    def _notification_handler(
-        self, sender_handle: int, data: bytearray
-    ) -> None:
+    def _notification_handler(self, sender_handle: int, data: bytearray) -> None:
         """Parse a BLE notification and push the update to HA."""
         try:
             msg = parse_message(data)
@@ -126,9 +122,7 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
         self.async_set_updated_data(None)
 
         if msg.field_name:
-            _LOGGER.debug(
-                "%s = %s %s", msg.field_name, msg.converted_value, msg.unit
-            )
+            _LOGGER.debug("%s = %s %s", msg.field_name, msg.converted_value, msg.unit)
 
     @callback
     def _on_disconnect(self, client: BleakClient) -> None:
@@ -138,7 +132,11 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
 
     async def async_shutdown(self) -> None:
         """Clean up BLE connection on unload."""
-        if self._client and hasattr(self._client, "is_connected") and self._client.is_connected:
+        if (
+            self._client
+            and hasattr(self._client, "is_connected")
+            and self._client.is_connected
+        ):
             try:
                 await self._client.stop_notify(CHAR_NOTIFY)
             except Exception:

@@ -51,9 +51,7 @@ async def async_unload_entry(
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
     if unload_ok:
-        coordinator: SpecializedTurboCoordinator = hass.data[DOMAIN].pop(
-            entry.entry_id
-        )
+        coordinator: SpecializedTurboCoordinator = hass.data[DOMAIN].pop(entry.entry_id)
         await coordinator.async_shutdown()
 
     return unload_ok
