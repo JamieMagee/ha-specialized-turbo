@@ -1,4 +1,4 @@
-"""The Specialized Turbo integration."""
+"""Specialized Turbo BLE integration for Home Assistant."""
 
 from __future__ import annotations
 

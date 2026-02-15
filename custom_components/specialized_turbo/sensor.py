@@ -219,7 +219,7 @@ async def async_setup_entry(
 class SpecializedTurboSensor(
     CoordinatorEntity[SpecializedTurboCoordinator], SensorEntity
 ):
-    """A sensor entity for a Specialized Turbo bike telemetry field."""
+    """One telemetry field from a Specialized Turbo bike."""
 
     entity_description: SpecializedSensorEntityDescription
     _attr_has_entity_name = True

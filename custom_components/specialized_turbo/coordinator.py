@@ -1,8 +1,7 @@
-"""Data coordinator for Specialized Turbo integration.
+"""BLE coordinator for Specialized Turbo bikes.
 
-Uses BLE notifications (push) to receive telemetry from the bike.
-The coordinator wraps the protocol parser and maintains a TelemetrySnapshot
-that is pushed to HA entities whenever new data arrives.
+Connects over BLE, subscribes to GATT notifications, parses incoming
+telemetry, and pushes updates to HA entities.
 """
 
 from __future__ import annotations
@@ -30,14 +29,7 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
-    """Coordinator that manages a BLE connection to a Specialized Turbo bike.
-
-    This coordinator:
-    1. Connects to the bike via BLE
-    2. Subscribes to telemetry notifications on CHAR_NOTIFY
-    3. Parses each notification and updates the TelemetrySnapshot
-    4. Pushes updated data to HA entities via async_set_updated_data
-    """
+    """Manages the BLE connection and notification subscription for one bike."""
 
     def __init__(
         self,
@@ -68,11 +60,7 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
         service_info: bluetooth.BluetoothServiceInfoBleak,
         seconds_since_last_update: float | None,
     ) -> bool:
-        """Determine if we need to poll (connect and subscribe).
-
-        We need to poll (connect) if we haven't received data yet or if the
-        connection was lost.
-        """
+        """True if we haven't received any data yet (need to connect)."""
         return self.snapshot.message_count == 0
 
     async def _async_poll(
@@ -125,7 +113,7 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
     def _notification_handler(
         self, sender_handle: int, data: bytearray
     ) -> None:
-        """Handle a BLE notification from the bike."""
+        """Parse a BLE notification and push the update to HA."""
         try:
             msg = parse_message(data)
         except Exception:
