@@ -40,7 +40,7 @@ Automatically discovers your bike over BLE and provides real-time telemetry as s
 
 1. Open HACS in Home Assistant
 2. Click **Integrations** → **⋮** → **Custom repositories**
-3. Add `https://github.com/your-username/ha-specialized-turbo` as type **Integration**
+3. Add `https://github.com/JamieMagee/ha-specialized-turbo` as type **Integration**
 4. Click **Download**
 5. Restart Home Assistant
 
@@ -68,7 +68,7 @@ If auto-discovery doesn't trigger, go to **Settings → Devices & Services → A
 
 This integration uses the Gen 2 "TURBOHMI2017" BLE protocol. The protocol library is embedded in the integration — no external Python packages are needed beyond `bleak` (which HA already ships).
 
-See the companion library [specialized-turbo](https://github.com/your-username/specialized-turbo) for the full protocol reference and standalone Python usage.
+See the companion library [specialized-turbo](https://github.com/JamieMagee/specialized-turbo) for the full protocol reference and standalone Python usage.
 
 ## Architecture
 

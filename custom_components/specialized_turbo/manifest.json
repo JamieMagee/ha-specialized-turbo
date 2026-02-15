@@ -4,7 +4,7 @@
   "codeowners": [],
   "config_flow": true,
   "dependencies": ["bluetooth_adapters"],
-  "documentation": "https://github.com/your-username/ha-specialized-turbo",
+  "documentation": "https://github.com/JamieMagee/ha-specialized-turbo",
   "bluetooth": [
     {
       "manufacturer_id": 89,
