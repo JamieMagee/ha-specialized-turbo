@@ -20,7 +20,9 @@
     "@JamieMagee"
   ],
   "config_flow": true,
-  "dependencies": [],
+  "dependencies": [
+    "bluetooth_adapters"
+  ],
   "documentation": "https://github.com/JamieMagee/ha-specialized-turbo",
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/JamieMagee/ha-specialized-turbo/issues",

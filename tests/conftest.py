@@ -18,6 +18,16 @@ def auto_enable_custom_integrations(enable_custom_integrations: None) -> None:  
     """Enable custom integrations in all tests."""
     return
 
+
+@pytest.fixture(autouse=True)
+def mock_bluetooth(  # noqa: PT004
+    mock_bleak_scanner_start: MagicMock,
+    mock_bluetooth_adapters: None,
+) -> None:
+    """Mock out bluetooth from starting."""
+    return
+
+
 MOCK_ADDRESS = "DC:DD:BB:4A:D6:55"
 MOCK_ADDRESS_FORMATTED = "dc:dd:bb:4a:d6:55"
 MOCK_NAME = "SPECIALIZED"
