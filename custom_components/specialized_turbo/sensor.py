@@ -249,4 +249,4 @@ class SpecializedTurboSensor(
     @property
     def available(self) -> bool:
         """Return True if the coordinator has received at least one message."""
-        return super().available and self.coordinator.snapshot.message_count > 0
+        return self.coordinator.snapshot.message_count > 0
