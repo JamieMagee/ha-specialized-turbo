@@ -74,7 +74,7 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
 
         _LOGGER.info("Connecting to Specialized Turbo at %s", self._address)
 
-        ble_device = await bluetooth.async_ble_device_from_address(
+        ble_device = bluetooth.async_ble_device_from_address(
             self.hass, self._address, connectable=True
         )
 

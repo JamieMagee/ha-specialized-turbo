@@ -36,8 +36,9 @@ async def async_setup_entry(
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
-    # Start the coordinator — it will connect and subscribe on first poll
-    entry.async_on_unload(coordinator.async_start)
+    # Start the coordinator — it will connect and subscribe on first poll.
+    # async_start() returns a callback that stops the coordinator.
+    entry.async_on_unload(coordinator.async_start())
 
     return True
 
