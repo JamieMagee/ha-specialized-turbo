@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 
 from bleak import BleakClient
+from bleak_retry_connector import establish_connection
 
 from homeassistant.components import bluetooth
 from homeassistant.components.bluetooth.active_update_coordinator import (
@@ -82,11 +83,12 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
             _LOGGER.warning("Could not find BLE device at %s", self._address)
             return
 
-        client = BleakClient(
+        client = await establish_connection(
+            BleakClient,
             ble_device,
+            self._address,
             disconnected_callback=self._on_disconnect,
         )
-        await client.connect()
         self._client = client
 
         # Trigger pairing if PIN is provided
@@ -114,7 +116,7 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
         self.snapshot.update_from_message(msg)
 
         # Push the update to HA — this triggers entity state writes
-        self.async_set_updated_data(None)
+        self.async_update_listeners()
 
         if msg.field_name:
             _LOGGER.debug("%s = %s %s", msg.field_name, msg.converted_value, msg.unit)
