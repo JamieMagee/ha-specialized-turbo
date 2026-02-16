@@ -140,4 +140,3 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
             except Exception:
                 _LOGGER.debug("Error disconnecting", exc_info=True)
         self._client = None
-        await super().async_shutdown()
