@@ -1,0 +1,23 @@
+[project]
+name = "ha-specialized-turbo"
+version = "0.1.0"
+description = "Specialized Turbo BLE integration for Home Assistant"
+requires-python = ">=3.12"
+
+[tool.uv]
+python-preference = "managed"
+environments = ["python_version >= '3.12'"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "pytest-cov>=5.0",
+    "pytest-homeassistant-custom-component",
+    "specialized-turbo==0.1.0",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]

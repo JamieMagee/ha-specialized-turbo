@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 
 from bleak import BleakClient
+from bleak.backends.characteristic import BleakGATTCharacteristic
 from bleak_retry_connector import establish_connection
 
 from homeassistant.components import bluetooth
@@ -51,6 +52,7 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
         self._pin = pin
         self.snapshot = TelemetrySnapshot()
         self._client: BleakClient | None = None
+        self._was_unavailable = False
 
     @callback
     def _needs_poll(
@@ -59,7 +61,7 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
         seconds_since_last_update: float | None,
     ) -> bool:
         """True if we haven't received any data yet (need to connect)."""
-        return self.snapshot.message_count == 0
+        return bool(self.snapshot.message_count == 0)
 
     async def _async_poll(
         self,
@@ -73,14 +75,16 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
         if self._client and self._client.is_connected:
             return
 
-        _LOGGER.info("Connecting to Specialized Turbo at %s", self._address)
+        _LOGGER.debug("Connecting to Specialized Turbo at %s", self._address)
 
         ble_device = bluetooth.async_ble_device_from_address(
             self.hass, self._address, connectable=True
         )
 
         if ble_device is None:
-            _LOGGER.warning("Could not find BLE device at %s", self._address)
+            if not self._was_unavailable:
+                _LOGGER.info("Specialized Turbo at %s is unavailable", self._address)
+                self._was_unavailable = True
             return
 
         client = await establish_connection(
@@ -90,6 +94,10 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
             disconnected_callback=self._on_disconnect,
         )
         self._client = client
+
+        if self._was_unavailable:
+            _LOGGER.info("Specialized Turbo at %s is available again", self._address)
+            self._was_unavailable = False
 
         # Trigger pairing if PIN is provided
         if self._pin is not None:
@@ -105,7 +113,9 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
         await client.start_notify(CHAR_NOTIFY, self._notification_handler)
         _LOGGER.info("Subscribed to telemetry notifications")
 
-    def _notification_handler(self, sender_handle: int, data: bytearray) -> None:
+    def _notification_handler(
+        self, sender: BleakGATTCharacteristic, data: bytearray
+    ) -> None:
         """Parse a BLE notification and push the update to HA."""
         try:
             msg = parse_message(data)
@@ -124,7 +134,9 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
     @callback
     def _on_disconnect(self, client: BleakClient) -> None:
         """Handle unexpected disconnection."""
-        _LOGGER.warning("Disconnected from Specialized Turbo at %s", self._address)
+        if not self._was_unavailable:
+            _LOGGER.info("Disconnected from Specialized Turbo at %s", self._address)
+            self._was_unavailable = True
         self._client = None
 
     async def async_shutdown(self) -> None:

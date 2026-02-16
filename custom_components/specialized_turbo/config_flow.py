@@ -5,10 +5,14 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from bleak import BleakClient
+from bleak.exc import BleakError
+from bleak_retry_connector import establish_connection
 import voluptuous as vol
 
 from homeassistant.components.bluetooth import (
     BluetoothServiceInfoBleak,
+    async_ble_device_from_address,
     async_discovered_service_info,
 )
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
@@ -31,6 +35,18 @@ class SpecializedTurboConfigFlow(ConfigFlow, domain=DOMAIN):
         self._discovery_info: BluetoothServiceInfoBleak | None = None
         self._discovered_devices: dict[str, BluetoothServiceInfoBleak] = {}
 
+    async def _async_test_connection(self, address: str) -> bool:
+        """Attempt a BLE connection to verify the device is reachable."""
+        ble_device = async_ble_device_from_address(self.hass, address, connectable=True)
+        if ble_device is None:
+            return False
+        try:
+            client = await establish_connection(BleakClient, ble_device, address)
+            await client.disconnect()
+        except (BleakError, TimeoutError):
+            return False
+        return True
+
     async def async_step_bluetooth(
         self, discovery_info: BluetoothServiceInfoBleak
     ) -> ConfigFlowResult:
@@ -49,14 +65,20 @@ class SpecializedTurboConfigFlow(ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Confirm Bluetooth discovery and collect PIN."""
+        assert self._discovery_info is not None
+        errors: dict[str, str] = {}
+
         if user_input is not None:
-            return self.async_create_entry(
-                title=self._discovery_info.name or "Specialized Turbo",
-                data={
-                    CONF_ADDRESS: self._discovery_info.address,
-                    CONF_PIN: user_input.get(CONF_PIN),
-                },
-            )
+            if not await self._async_test_connection(self._discovery_info.address):
+                errors["base"] = "cannot_connect"
+            else:
+                return self.async_create_entry(
+                    title=self._discovery_info.name or "Specialized Turbo",
+                    data={
+                        CONF_ADDRESS: self._discovery_info.address,
+                        CONF_PIN: user_input.get(CONF_PIN),
+                    },
+                )
 
         return self.async_show_form(
             step_id="bluetooth_confirm",
@@ -69,6 +91,7 @@ class SpecializedTurboConfigFlow(ConfigFlow, domain=DOMAIN):
                 "name": self._discovery_info.name or "Specialized Turbo",
                 "address": self._discovery_info.address,
             },
+            errors=errors,
         )
 
     async def async_step_user(
@@ -82,13 +105,16 @@ class SpecializedTurboConfigFlow(ConfigFlow, domain=DOMAIN):
             await self.async_set_unique_id(format_mac(address), raise_on_progress=False)
             self._abort_if_unique_id_configured()
 
-            return self.async_create_entry(
-                title=self._discovered_devices.get(address, address),
-                data={
-                    CONF_ADDRESS: address,
-                    CONF_PIN: user_input.get(CONF_PIN),
-                },
-            )
+            if not await self._async_test_connection(address):
+                errors["base"] = "cannot_connect"
+            else:
+                return self.async_create_entry(
+                    title=self._discovered_devices.get(address, address),
+                    data={
+                        CONF_ADDRESS: address,
+                        CONF_PIN: user_input.get(CONF_PIN),
+                    },
+                )
 
         # Discover available Specialized bikes
         current_addresses = self._async_current_ids()
@@ -117,7 +143,26 @@ class SpecializedTurboConfigFlow(ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Handle reconfiguration to update the pairing PIN."""
+        if user_input is not None:
+            return self.async_update_reload_and_abort(
+                self._get_reconfigure_entry(),
+                data_updates={CONF_PIN: user_input.get(CONF_PIN)},
+            )
+
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(CONF_PIN): vol.Coerce(int),
+                }
+            ),
+        )
+
 
 def _is_specialized_service_info(info: BluetoothServiceInfoBleak) -> bool:
     """Check if a BluetoothServiceInfoBleak is a Specialized bike."""
-    return is_specialized_advertisement(info.manufacturer_data)
+    return bool(is_specialized_advertisement(info.manufacturer_data))

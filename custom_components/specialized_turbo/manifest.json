@@ -16,7 +16,9 @@
       ]
     }
   ],
-  "codeowners": [],
+  "codeowners": [
+    "@JamieMagee"
+  ],
   "config_flow": true,
   "dependencies": [
     "bluetooth_adapters"

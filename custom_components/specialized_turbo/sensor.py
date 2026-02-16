@@ -13,6 +13,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.const import (
+    EntityCategory,
     PERCENTAGE,
     UnitOfElectricCurrent,
     UnitOfElectricPotential,
@@ -32,6 +33,8 @@ from .const import DOMAIN
 from .coordinator import SpecializedTurboCoordinator
 from specialized_turbo import AssistLevel, TelemetrySnapshot
 
+PARALLEL_UPDATES = 0
+
 
 @dataclass(frozen=True, kw_only=True)
 class SpecializedSensorEntityDescription(SensorEntityDescription):
@@ -46,7 +49,7 @@ def _assist_level_name(snap: TelemetrySnapshot) -> str | None:
     if level is None:
         return None
     if isinstance(level, AssistLevel):
-        return level.name.capitalize()
+        return str(level.name.capitalize())
     return str(level)
 
 
@@ -81,7 +84,7 @@ SENSOR_DESCRIPTIONS: tuple[SpecializedSensorEntityDescription, ...] = (
         translation_key="battery_health",
         native_unit_of_measurement=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
-        icon="mdi:battery-heart-variant",
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda s: s.battery.health_pct,
     ),
     SpecializedSensorEntityDescription(
@@ -90,13 +93,14 @@ SENSOR_DESCRIPTIONS: tuple[SpecializedSensorEntityDescription, ...] = (
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda s: s.battery.temp_c,
     ),
     SpecializedSensorEntityDescription(
         key="battery_charge_cycles",
         translation_key="battery_charge_cycles",
-        icon="mdi:battery-sync",
         state_class=SensorStateClass.TOTAL_INCREASING,
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda s: s.battery.charge_cycles,
     ),
     SpecializedSensorEntityDescription(
@@ -105,6 +109,7 @@ SENSOR_DESCRIPTIONS: tuple[SpecializedSensorEntityDescription, ...] = (
         native_unit_of_measurement=UnitOfElectricPotential.VOLT,
         device_class=SensorDeviceClass.VOLTAGE,
         state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda s: s.battery.voltage_v,
     ),
     SpecializedSensorEntityDescription(
@@ -113,6 +118,7 @@ SENSOR_DESCRIPTIONS: tuple[SpecializedSensorEntityDescription, ...] = (
         native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
         device_class=SensorDeviceClass.CURRENT,
         state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda s: s.battery.current_a,
     ),
     # --- Motor / Rider ---
@@ -130,7 +136,6 @@ SENSOR_DESCRIPTIONS: tuple[SpecializedSensorEntityDescription, ...] = (
         native_unit_of_measurement=UnitOfPower.WATT,
         device_class=SensorDeviceClass.POWER,
         state_class=SensorStateClass.MEASUREMENT,
-        icon="mdi:bike",
         value_fn=lambda s: s.motor.rider_power_w,
     ),
     SpecializedSensorEntityDescription(
@@ -139,7 +144,6 @@ SENSOR_DESCRIPTIONS: tuple[SpecializedSensorEntityDescription, ...] = (
         native_unit_of_measurement=UnitOfPower.WATT,
         device_class=SensorDeviceClass.POWER,
         state_class=SensorStateClass.MEASUREMENT,
-        icon="mdi:engine",
         value_fn=lambda s: s.motor.motor_power_w,
     ),
     SpecializedSensorEntityDescription(
@@ -147,7 +151,6 @@ SENSOR_DESCRIPTIONS: tuple[SpecializedSensorEntityDescription, ...] = (
         translation_key="cadence",
         native_unit_of_measurement="RPM",
         state_class=SensorStateClass.MEASUREMENT,
-        icon="mdi:rotate-right",
         value_fn=lambda s: s.motor.cadence_rpm,
     ),
     SpecializedSensorEntityDescription(
@@ -156,7 +159,6 @@ SENSOR_DESCRIPTIONS: tuple[SpecializedSensorEntityDescription, ...] = (
         native_unit_of_measurement=UnitOfLength.KILOMETERS,
         device_class=SensorDeviceClass.DISTANCE,
         state_class=SensorStateClass.TOTAL_INCREASING,
-        icon="mdi:counter",
         value_fn=lambda s: s.motor.odometer_km,
     ),
     SpecializedSensorEntityDescription(
@@ -165,12 +167,12 @@ SENSOR_DESCRIPTIONS: tuple[SpecializedSensorEntityDescription, ...] = (
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda s: s.motor.motor_temp_c,
     ),
     SpecializedSensorEntityDescription(
         key="assist_level",
         translation_key="assist_level",
-        icon="mdi:lightning-bolt",
         value_fn=_assist_level_name,
     ),
     # --- Settings (informational) ---
@@ -178,24 +180,24 @@ SENSOR_DESCRIPTIONS: tuple[SpecializedSensorEntityDescription, ...] = (
         key="assist_eco_pct",
         translation_key="assist_eco_pct",
         native_unit_of_measurement=PERCENTAGE,
-        icon="mdi:leaf",
         entity_registry_enabled_default=False,
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda s: s.settings.assist_lev1_pct,
     ),
     SpecializedSensorEntityDescription(
         key="assist_trail_pct",
         translation_key="assist_trail_pct",
         native_unit_of_measurement=PERCENTAGE,
-        icon="mdi:pine-tree",
         entity_registry_enabled_default=False,
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda s: s.settings.assist_lev2_pct,
     ),
     SpecializedSensorEntityDescription(
         key="assist_turbo_pct",
         translation_key="assist_turbo_pct",
         native_unit_of_measurement=PERCENTAGE,
-        icon="mdi:rocket-launch",
         entity_registry_enabled_default=False,
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda s: s.settings.assist_lev3_pct,
     ),
 )
@@ -217,7 +219,8 @@ async def async_setup_entry(
 
 
 class SpecializedTurboSensor(
-    CoordinatorEntity[SpecializedTurboCoordinator], SensorEntity
+    CoordinatorEntity[SpecializedTurboCoordinator],
+    SensorEntity,  # type: ignore[type-var]
 ):
     """One telemetry field from a Specialized Turbo bike."""
 
@@ -249,4 +252,4 @@ class SpecializedTurboSensor(
     @property
     def available(self) -> bool:
         """Return True if the coordinator has received at least one message."""
-        return self.coordinator.snapshot.message_count > 0
+        return bool(self.coordinator.snapshot.message_count > 0)
