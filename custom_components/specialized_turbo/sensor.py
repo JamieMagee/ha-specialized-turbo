@@ -12,7 +12,6 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     PERCENTAGE,
     UnitOfElectricCurrent,
@@ -28,9 +27,10 @@ from homeassistant.helpers.device_registry import DeviceInfo, format_mac
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
+from . import SpecializedTurboConfigEntry
 from .const import DOMAIN
 from .coordinator import SpecializedTurboCoordinator
-from .lib import AssistLevel, TelemetrySnapshot
+from specialized_turbo import AssistLevel, TelemetrySnapshot
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -203,11 +203,11 @@ SENSOR_DESCRIPTIONS: tuple[SpecializedSensorEntityDescription, ...] = (
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: SpecializedTurboConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Specialized Turbo sensors from a config entry."""
-    coordinator: SpecializedTurboCoordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator = entry.runtime_data
 
     entities = [
         SpecializedTurboSensor(coordinator, description, entry)
@@ -228,7 +228,7 @@ class SpecializedTurboSensor(
         self,
         coordinator: SpecializedTurboCoordinator,
         description: SpecializedSensorEntityDescription,
-        entry: ConfigEntry,
+        entry: SpecializedTurboConfigEntry,
     ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)

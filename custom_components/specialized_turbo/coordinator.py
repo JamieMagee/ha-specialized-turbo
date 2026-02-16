@@ -9,7 +9,6 @@ from __future__ import annotations
 import logging
 
 from bleak import BleakClient
-from bleak.backends.device import BLEDevice
 
 from homeassistant.components import bluetooth
 from homeassistant.components.bluetooth.active_update_coordinator import (
@@ -17,7 +16,7 @@ from homeassistant.components.bluetooth.active_update_coordinator import (
 )
 from homeassistant.core import HomeAssistant, callback
 
-from .lib import (
+from specialized_turbo import (
     CHAR_NOTIFY,
     TelemetrySnapshot,
     parse_message,
@@ -76,19 +75,18 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
         if self._client and self._client.is_connected:
             return
 
-        device = service_info.device
         _LOGGER.info("Connecting to Specialized Turbo at %s", self._address)
 
-        self._client = await bluetooth.async_ble_device_from_address(
+        ble_device = await bluetooth.async_ble_device_from_address(
             self.hass, self._address, connectable=True
         )
 
-        if self._client is None:
+        if ble_device is None:
             _LOGGER.warning("Could not find BLE device at %s", self._address)
             return
 
         client = BleakClient(
-            self._client if isinstance(self._client, BLEDevice) else device,
+            ble_device,
             disconnected_callback=self._on_disconnect,
         )
         await client.connect()
@@ -132,18 +130,14 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
 
     async def async_shutdown(self) -> None:
         """Clean up BLE connection on unload."""
-        if (
-            self._client
-            and hasattr(self._client, "is_connected")
-            and self._client.is_connected
-        ):
+        if self._client and self._client.is_connected:
             try:
                 await self._client.stop_notify(CHAR_NOTIFY)
             except Exception:
-                pass
+                _LOGGER.debug("Error stopping notifications", exc_info=True)
             try:
                 await self._client.disconnect()
             except Exception:
-                pass
+                _LOGGER.debug("Error disconnecting", exc_info=True)
         self._client = None
         await super().async_shutdown()

@@ -8,14 +8,14 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_ADDRESS, Platform
 from homeassistant.core import HomeAssistant
 
-from .const import CONF_PIN, DOMAIN
+from .const import CONF_PIN
 from .coordinator import SpecializedTurboCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS: list[Platform] = [Platform.SENSOR]
 
-type SpecializedTurboConfigEntry = ConfigEntry
+type SpecializedTurboConfigEntry = ConfigEntry[SpecializedTurboCoordinator]
 
 
 async def async_setup_entry(
@@ -32,9 +32,7 @@ async def async_setup_entry(
         pin=pin,
     )
 
-    # Store coordinator so platforms can access it
-    hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN][entry.entry_id] = coordinator
+    entry.runtime_data = coordinator
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
@@ -51,7 +49,6 @@ async def async_unload_entry(
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
     if unload_ok:
-        coordinator: SpecializedTurboCoordinator = hass.data[DOMAIN].pop(entry.entry_id)
-        await coordinator.async_shutdown()
+        await entry.runtime_data.async_shutdown()
 
     return unload_ok

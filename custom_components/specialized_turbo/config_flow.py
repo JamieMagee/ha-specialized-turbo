@@ -16,7 +16,7 @@ from homeassistant.const import CONF_ADDRESS
 from homeassistant.helpers.device_registry import format_mac
 
 from .const import CONF_PIN, DOMAIN
-from .lib import is_specialized_advertisement
+from specialized_turbo import is_specialized_advertisement
 
 _LOGGER = logging.getLogger(__name__)
 
