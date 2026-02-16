@@ -62,15 +62,12 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
 
     async def _async_poll(
         self,
-        service_info: bluetooth.BluetoothServiceInfoBleak,
+        service_info: bluetooth.BluetoothServiceInfoBleak | None = None,
     ) -> None:
         """Connect to the bike and subscribe to notifications."""
-        await self._ensure_connected(service_info)
+        await self._ensure_connected()
 
-    async def _ensure_connected(
-        self,
-        service_info: bluetooth.BluetoothServiceInfoBleak,
-    ) -> None:
+    async def _ensure_connected(self) -> None:
         """Establish BLE connection and subscribe to notifications."""
         if self._client and self._client.is_connected:
             return
