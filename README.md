@@ -5,7 +5,7 @@ Custom integration that reads telemetry from Specialized Turbo e-bikes (Vado, Le
 ## Sensors
 
 | Sensor | Unit | What it is |
-|---|---|---|
+| --- | --- | --- |
 | Battery | % | State of charge |
 | Battery capacity | Wh | Total capacity |
 | Battery remaining | Wh | Energy left |
@@ -57,13 +57,11 @@ If auto-discovery doesn't work, add it manually: Settings > Devices & Services >
 
 ## Protocol
 
-Uses the Gen 2 "TURBOHMI2017" BLE protocol. The protocol parser is embedded in the integration, so no extra pip packages are needed (bleak ships with HA).
-
-The standalone library is at [specialized-turbo](https://github.com/JamieMagee/specialized-turbo), which has the full protocol reference and Python API.
+Uses the Gen 2 "TURBOHMI2017" BLE protocol. The standalone library is at [specialized-turbo](https://github.com/JamieMagee/specialized-turbo), which has the full protocol reference and Python API.
 
 ## How it works
 
-```
+```plain
 custom_components/specialized_turbo/
 ├── __init__.py          # Setup and teardown
 ├── manifest.json        # BLE discovery matcher
@@ -72,10 +70,7 @@ custom_components/specialized_turbo/
 ├── coordinator.py       # BLE connect, subscribe, parse notifications
 ├── sensor.py            # 19 sensor entities
 ├── strings.json         # UI text
-├── translations/en.json
-└── lib/                 # Protocol parser (from specialized-turbo)
-    ├── protocol.py
-    └── models.py
+└── translations/en.json
 ```
 
 The coordinator is an `ActiveBluetoothDataUpdateCoordinator`. It picks up BLE advertisements passively, connects when needed, subscribes to GATT notifications, and pushes parsed data to the sensor entities.
