@@ -16,7 +16,7 @@ dev = [
     "pytest-asyncio>=0.23",
     "pytest-cov>=5.0",
     "pytest-homeassistant-custom-component",
-    "specialized-turbo==0.1.0",
+    "specialized-turbo==0.1.1",
 ]
 
 [tool.pytest.ini_options]
