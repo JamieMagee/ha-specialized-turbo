@@ -6,9 +6,17 @@ import asyncio
 import sys
 from unittest.mock import MagicMock
 
+import pytest
+
 # Windows requires SelectorEventLoop for compatibility with pytest-homeassistant
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
+
+@pytest.fixture(autouse=True)
+def auto_enable_custom_integrations(enable_custom_integrations: None) -> None:  # noqa: PT004
+    """Enable custom integrations in all tests."""
+    return
 
 MOCK_ADDRESS = "DC:DD:BB:4A:D6:55"
 MOCK_ADDRESS_FORMATTED = "dc:dd:bb:4a:d6:55"
