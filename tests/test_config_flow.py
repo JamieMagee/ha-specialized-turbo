@@ -315,11 +315,11 @@ async def test_user_flow_already_configured(hass: HomeAssistant) -> None:
     )
     entry.add_to_hass(hass)
 
-    # Use a different address for discovery so the form shows
-    other_info = make_service_info(name="Other Bike", address="AA:BB:CC:DD:EE:FF")
+    # Discover the already-configured address so it appears in the form
+    service_info = make_service_info()
     with patch(
         "custom_components.specialized_turbo.config_flow.async_discovered_service_info",
-        return_value=[other_info],
+        return_value=[service_info],
     ):
         result = await hass.config_entries.flow.async_init(
             DOMAIN,
@@ -328,7 +328,7 @@ async def test_user_flow_already_configured(hass: HomeAssistant) -> None:
 
     assert result["type"] is FlowResultType.FORM
 
-    # Now try to configure with the already-configured address
+    # Submit the already-configured address
     p1, p2 = _mock_connection_success()
     with p1, p2:
         result = await hass.config_entries.flow.async_configure(
@@ -354,7 +354,14 @@ async def test_user_flow_cannot_connect(hass: HomeAssistant) -> None:
         )
 
     p1, p2 = _mock_connection_failure_bleak_error()
-    with p1, p2:
+    with (
+        p1,
+        p2,
+        patch(
+            "custom_components.specialized_turbo.config_flow.async_discovered_service_info",
+            return_value=[service_info],
+        ),
+    ):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
             user_input={"address": MOCK_ADDRESS, CONF_PIN: 1234},
