@@ -131,6 +131,11 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
         if msg.field_name:
             _LOGGER.debug("%s = %s %s", msg.field_name, msg.converted_value, msg.unit)
 
+    @property
+    def connected(self) -> bool:
+        """Return True if the BLE client is connected."""
+        return self._client is not None and self._client.is_connected
+
     @callback
     def _on_disconnect(self, client: BleakClient) -> None:
         """Handle unexpected disconnection."""
@@ -138,6 +143,8 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
             _LOGGER.info("Disconnected from Specialized Turbo at %s", self._address)
             self._was_unavailable = True
         self._client = None
+        # Notify listeners so entities mark themselves unavailable
+        self.async_update_listeners()
 
     async def async_shutdown(self) -> None:
         """Clean up BLE connection on unload."""

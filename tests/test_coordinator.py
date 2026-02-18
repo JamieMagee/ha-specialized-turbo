@@ -311,11 +311,38 @@ async def test_ensure_connected_pairing_error(hass: HomeAssistant) -> None:
     mock_client.start_notify.assert_called_once()
 
 
+# --- connected property ---
+
+
+async def test_connected_no_client(hass: HomeAssistant) -> None:
+    """Test connected is False when no client exists."""
+    coord = _make_coordinator(hass)
+    assert coord.connected is False
+
+
+async def test_connected_when_connected(hass: HomeAssistant) -> None:
+    """Test connected is True when client is connected."""
+    coord = _make_coordinator(hass)
+    mock_client = MagicMock()
+    mock_client.is_connected = True
+    coord._client = mock_client
+    assert coord.connected is True
+
+
+async def test_connected_when_disconnected(hass: HomeAssistant) -> None:
+    """Test connected is False when client exists but is disconnected."""
+    coord = _make_coordinator(hass)
+    mock_client = MagicMock()
+    mock_client.is_connected = False
+    coord._client = mock_client
+    assert coord.connected is False
+
+
 # --- on_disconnect ---
 
 
 async def test_on_disconnect(hass: HomeAssistant) -> None:
-    """Test disconnect callback sets unavailable flag."""
+    """Test disconnect callback sets unavailable flag and notifies listeners."""
     coord = _make_coordinator(hass)
     coord._client = MagicMock()
 
@@ -323,6 +350,7 @@ async def test_on_disconnect(hass: HomeAssistant) -> None:
 
     assert coord._was_unavailable is True
     assert coord._client is None
+    coord.async_update_listeners.assert_called_once()
 
 
 async def test_on_disconnect_already_unavailable(hass: HomeAssistant) -> None:
@@ -335,6 +363,7 @@ async def test_on_disconnect_already_unavailable(hass: HomeAssistant) -> None:
 
     assert coord._was_unavailable is True
     assert coord._client is None
+    coord.async_update_listeners.assert_called_once()
 
 
 # --- async_shutdown ---
