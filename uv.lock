@@ -1960,7 +1960,7 @@ wheels = [
 
 [[package]]
 name = "ha-specialized-turbo"
-version = "0.1.4"
+version = "0.1.5"
 source = { virtual = "." }
 
 [package.dev-dependencies]

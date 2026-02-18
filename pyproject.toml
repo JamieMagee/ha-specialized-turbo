@@ -1,6 +1,6 @@
 [project]
 name = "ha-specialized-turbo"
-version = "0.1.4"
+version = "0.1.5"
 description = "Specialized Turbo BLE integration for Home Assistant"
 requires-python = ">=3.12"
 
