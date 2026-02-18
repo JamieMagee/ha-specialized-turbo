@@ -36,17 +36,47 @@ def _make_coordinator(
 # --- needs_poll ---
 
 
-async def test_needs_poll_no_messages(hass: HomeAssistant) -> None:
-    """Test needs_poll returns True when no messages received."""
+async def test_needs_poll_no_client(hass: HomeAssistant) -> None:
+    """Test needs_poll returns True when no client exists."""
     coord = _make_coordinator(hass)
     assert coord._needs_poll(MagicMock(), None) is True
 
 
-async def test_needs_poll_has_messages(hass: HomeAssistant) -> None:
-    """Test needs_poll returns False after messages received."""
+async def test_needs_poll_connected(hass: HomeAssistant) -> None:
+    """Test needs_poll returns False when client is connected."""
     coord = _make_coordinator(hass)
-    coord.snapshot.message_count = 5
+    mock_client = MagicMock()
+    mock_client.is_connected = True
+    coord._client = mock_client
     assert coord._needs_poll(MagicMock(), None) is False
+
+
+async def test_needs_poll_disconnected_client(hass: HomeAssistant) -> None:
+    """Test needs_poll returns True when client exists but is disconnected."""
+    coord = _make_coordinator(hass)
+    mock_client = MagicMock()
+    mock_client.is_connected = False
+    coord._client = mock_client
+    assert coord._needs_poll(MagicMock(), None) is True
+
+
+async def test_needs_poll_after_disconnect_reconnect(hass: HomeAssistant) -> None:
+    """Test needs_poll triggers reconnection after bike leaves and returns."""
+    coord = _make_coordinator(hass)
+
+    # Simulate first connection with data received
+    mock_client = MagicMock()
+    mock_client.is_connected = True
+    coord._client = mock_client
+    coord.snapshot.message_count = 100
+    assert coord._needs_poll(MagicMock(), None) is False
+
+    # Simulate bike leaving (disconnect callback fires)
+    coord._on_disconnect(mock_client)
+    assert coord._client is None
+
+    # Bike comes back in range — needs_poll must return True to reconnect
+    assert coord._needs_poll(MagicMock(), None) is True
 
 
 # --- async_poll ---

@@ -60,8 +60,8 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
         service_info: bluetooth.BluetoothServiceInfoBleak,
         seconds_since_last_update: float | None,
     ) -> bool:
-        """True if we haven't received any data yet (need to connect)."""
-        return bool(self.snapshot.message_count == 0)
+        """True if we need to (re)connect to the bike."""
+        return self._client is None or not self._client.is_connected
 
     async def _async_poll(
         self,
