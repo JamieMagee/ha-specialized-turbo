@@ -27,15 +27,9 @@ async def test_setup_entry(hass: HomeAssistant) -> None:
     mock_coordinator.async_start.return_value = lambda: None
     mock_coordinator.async_shutdown = AsyncMock()
 
-    with (
-        patch(
-            "custom_components.specialized_turbo.bluetooth.async_ble_device_from_address",
-            return_value=MagicMock(),
-        ),
-        patch(
-            "custom_components.specialized_turbo.SpecializedTurboCoordinator",
-            return_value=mock_coordinator,
-        ),
+    with patch(
+        "custom_components.specialized_turbo.SpecializedTurboCoordinator",
+        return_value=mock_coordinator,
     ):
         await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
@@ -44,8 +38,8 @@ async def test_setup_entry(hass: HomeAssistant) -> None:
     assert entry.runtime_data is mock_coordinator
 
 
-async def test_setup_entry_device_not_found(hass: HomeAssistant) -> None:
-    """Test setup entry retries when BLE device is not found."""
+async def test_setup_entry_device_not_in_range(hass: HomeAssistant) -> None:
+    """Test setup succeeds even when bike is not in BLE range."""
     entry = MockConfigEntry(
         domain=DOMAIN,
         data={CONF_ADDRESS: MOCK_ADDRESS, CONF_PIN: 1234},
@@ -53,14 +47,18 @@ async def test_setup_entry_device_not_found(hass: HomeAssistant) -> None:
     )
     entry.add_to_hass(hass)
 
+    mock_coordinator = MagicMock()
+    mock_coordinator.async_start.return_value = lambda: None
+    mock_coordinator.async_shutdown = AsyncMock()
+
     with patch(
-        "custom_components.specialized_turbo.bluetooth.async_ble_device_from_address",
-        return_value=None,
+        "custom_components.specialized_turbo.SpecializedTurboCoordinator",
+        return_value=mock_coordinator,
     ):
         await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
 
-    assert entry.state is ConfigEntryState.SETUP_RETRY
+    assert entry.state is ConfigEntryState.LOADED
 
 
 async def test_setup_entry_no_pin(hass: HomeAssistant) -> None:
@@ -76,15 +74,9 @@ async def test_setup_entry_no_pin(hass: HomeAssistant) -> None:
     mock_coordinator.async_start.return_value = lambda: None
     mock_coordinator.async_shutdown = AsyncMock()
 
-    with (
-        patch(
-            "custom_components.specialized_turbo.bluetooth.async_ble_device_from_address",
-            return_value=MagicMock(),
-        ),
-        patch(
-            "custom_components.specialized_turbo.SpecializedTurboCoordinator",
-            return_value=mock_coordinator,
-        ),
+    with patch(
+        "custom_components.specialized_turbo.SpecializedTurboCoordinator",
+        return_value=mock_coordinator,
     ):
         await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
@@ -105,15 +97,9 @@ async def test_unload_entry(hass: HomeAssistant) -> None:
     mock_coordinator.async_start.return_value = lambda: None
     mock_coordinator.async_shutdown = AsyncMock()
 
-    with (
-        patch(
-            "custom_components.specialized_turbo.bluetooth.async_ble_device_from_address",
-            return_value=MagicMock(),
-        ),
-        patch(
-            "custom_components.specialized_turbo.SpecializedTurboCoordinator",
-            return_value=mock_coordinator,
-        ),
+    with patch(
+        "custom_components.specialized_turbo.SpecializedTurboCoordinator",
+        return_value=mock_coordinator,
     ):
         await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()

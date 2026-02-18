@@ -8,7 +8,6 @@ from homeassistant.components import bluetooth
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_ADDRESS, Platform
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryNotReady
 
 from .const import CONF_PIN
 from .coordinator import SpecializedTurboCoordinator
@@ -26,12 +25,6 @@ async def async_setup_entry(
     """Set up Specialized Turbo from a config entry."""
     address: str = entry.data[CONF_ADDRESS]
     pin: int | None = entry.data.get(CONF_PIN)
-
-    # Verify the BLE device is reachable before proceeding
-    if not bluetooth.async_ble_device_from_address(hass, address, connectable=True):
-        raise ConfigEntryNotReady(
-            f"Could not find Specialized Turbo BLE device at {address}"
-        )
 
     coordinator = SpecializedTurboCoordinator(
         hass,
