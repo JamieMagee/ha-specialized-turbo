@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from bleak import BleakError
+
 from homeassistant.core import HomeAssistant
 
 from custom_components.specialized_turbo.coordinator import (
@@ -87,7 +89,7 @@ async def test_async_poll(hass: HomeAssistant) -> None:
     coord = _make_coordinator(hass)
 
     with patch.object(coord, "_ensure_connected", new_callable=AsyncMock) as mock:
-        await coord._async_poll()
+        await coord._do_poll()
         mock.assert_called_once()
 
 
@@ -402,5 +404,54 @@ async def test_async_shutdown_errors(hass: HomeAssistant) -> None:
     coord._client = mock_client
 
     await coord.async_shutdown()
+
+    assert coord._client is None
+
+
+# --- BleakError handling in _do_poll ---
+
+
+async def test_do_poll_bleak_error_from_start_notify(hass: HomeAssistant) -> None:
+    """Test that BleakError during start_notify is caught and client is cleared."""
+    coord = _make_coordinator(hass)
+
+    mock_client = AsyncMock()
+    mock_client.is_connected = True
+    mock_client.start_notify.side_effect = BleakError("Not connected")
+
+    with (
+        patch(
+            "custom_components.specialized_turbo.coordinator.bluetooth.async_ble_device_from_address",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "custom_components.specialized_turbo.coordinator.establish_connection",
+            new_callable=AsyncMock,
+            return_value=mock_client,
+        ),
+    ):
+        await coord._do_poll()  # should not raise
+
+    assert coord._client is None
+
+
+async def test_do_poll_bleak_error_from_establish_connection(
+    hass: HomeAssistant,
+) -> None:
+    """Test that BleakError during establish_connection is caught."""
+    coord = _make_coordinator(hass)
+
+    with (
+        patch(
+            "custom_components.specialized_turbo.coordinator.bluetooth.async_ble_device_from_address",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "custom_components.specialized_turbo.coordinator.establish_connection",
+            new_callable=AsyncMock,
+            side_effect=BleakError("Failed to connect"),
+        ),
+    ):
+        await coord._do_poll()  # should not raise
 
     assert coord._client is None

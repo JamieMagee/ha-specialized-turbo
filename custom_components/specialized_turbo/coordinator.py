@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 
-from bleak import BleakClient
+from bleak import BleakClient, BleakError
 from bleak.backends.characteristic import BleakGATTCharacteristic
 from bleak_retry_connector import establish_connection
 
@@ -44,7 +44,7 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
             logger=logger,
             address=address,
             needs_poll_method=self._needs_poll,
-            poll_method=self._async_poll,
+            poll_method=self._do_poll,
             mode=bluetooth.BluetoothScanningMode.ACTIVE,
             connectable=True,
         )
@@ -63,12 +63,18 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
         """True if we need to (re)connect to the bike."""
         return self._client is None or not self._client.is_connected
 
-    async def _async_poll(
+    async def _do_poll(
         self,
         service_info: bluetooth.BluetoothServiceInfoBleak | None = None,
     ) -> None:
         """Connect to the bike and subscribe to notifications."""
-        await self._ensure_connected()
+        try:
+            await self._ensure_connected()
+        except BleakError as err:
+            _LOGGER.debug(
+                "BLE connection unavailable for %s: %s", self._address, err
+            )
+            self._client = None
 
     async def _ensure_connected(self) -> None:
         """Establish BLE connection and subscribe to notifications."""
