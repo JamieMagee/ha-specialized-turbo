@@ -20,7 +20,10 @@ from homeassistant.core import HomeAssistant, callback
 
 from specialized_turbo import (
     CHAR_NOTIFY,
+    ProtocolGeneration,
     TelemetrySnapshot,
+    detect_generation,
+    get_char_notify,
     parse_message,
 )
 
@@ -53,6 +56,7 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
         self.snapshot = TelemetrySnapshot()
         self._client: BleakClient | None = None
         self._was_unavailable = False
+        self._generation: ProtocolGeneration | None = None
 
     @callback
     def _needs_poll(
@@ -61,6 +65,11 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
         seconds_since_last_update: float | None,
     ) -> bool:
         """True if we need to (re)connect to the bike."""
+        # Detect generation early from advertisement data
+        if self._generation is None:
+            gen = detect_generation(service_info.manufacturer_data)
+            if gen is not None:
+                self._generation = gen
         return self._client is None or not self._client.is_connected
 
     async def _do_poll(
@@ -105,6 +114,12 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
             _LOGGER.info("Specialized Turbo at %s is available again", self._address)
             self._was_unavailable = False
 
+        char_notify = (
+            get_char_notify(self._generation)
+            if self._generation is not None
+            else CHAR_NOTIFY
+        )
+
         # Trigger pairing if PIN is provided
         if self._pin is not None:
             try:
@@ -116,7 +131,7 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
                 _LOGGER.warning("Pairing failed", exc_info=True)
 
         # Subscribe to telemetry notifications
-        await client.start_notify(CHAR_NOTIFY, self._notification_handler)
+        await client.start_notify(char_notify, self._notification_handler)
         _LOGGER.info("Subscribed to telemetry notifications")
 
     def _notification_handler(
@@ -155,8 +170,13 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
     async def async_shutdown(self) -> None:
         """Clean up BLE connection on unload."""
         if self._client and self._client.is_connected:
+            char_notify = (
+                get_char_notify(self._generation)
+                if self._generation is not None
+                else CHAR_NOTIFY
+            )
             try:
-                await self._client.stop_notify(CHAR_NOTIFY)
+                await self._client.stop_notify(char_notify)
             except Exception:
                 _LOGGER.debug("Error stopping notifications", exc_info=True)
             try:

@@ -12,9 +12,9 @@ from homeassistant.core import HomeAssistant
 from custom_components.specialized_turbo.coordinator import (
     SpecializedTurboCoordinator,
 )
-from specialized_turbo import CHAR_NOTIFY
+from specialized_turbo import CHAR_NOTIFY, CHAR_NOTIFY_GEN1, ProtocolGeneration
 
-from .conftest import MOCK_ADDRESS
+from .conftest import MOCK_ADDRESS, MOCK_GEN1_MANUFACTURER_DATA
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -455,3 +455,58 @@ async def test_do_poll_bleak_error_from_establish_connection(
         await coord._do_poll()  # should not raise
 
     assert coord._client is None
+
+
+# --- Gen 1 support ---
+
+
+async def test_needs_poll_detects_gen1(hass: HomeAssistant) -> None:
+    """Test _needs_poll detects Gen 1 protocol from manufacturer data."""
+    coord = _make_coordinator(hass)
+    service_info = MagicMock()
+    service_info.manufacturer_data = MOCK_GEN1_MANUFACTURER_DATA
+    coord._needs_poll(service_info, None)
+    assert coord._generation == ProtocolGeneration.GEN_1
+
+
+async def test_ensure_connected_gen1_uses_gen1_char_notify(
+    hass: HomeAssistant,
+) -> None:
+    """Test ensure_connected subscribes to Gen 1 CHAR_NOTIFY UUID."""
+    coord = _make_coordinator(hass)
+    coord._generation = ProtocolGeneration.GEN_1
+
+    mock_client = AsyncMock()
+    mock_client.is_connected = True
+
+    with (
+        patch(
+            "custom_components.specialized_turbo.coordinator.bluetooth.async_ble_device_from_address",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "custom_components.specialized_turbo.coordinator.establish_connection",
+            new_callable=AsyncMock,
+            return_value=mock_client,
+        ),
+    ):
+        await coord._ensure_connected()
+
+    mock_client.start_notify.assert_called_once_with(
+        CHAR_NOTIFY_GEN1, coord._notification_handler
+    )
+
+
+async def test_gen1_notification_with_ff_padding(hass: HomeAssistant) -> None:
+    """Test Gen 1 notifications with FF padding parse correctly."""
+    coord = _make_coordinator(hass)
+    coord._generation = ProtocolGeneration.GEN_1
+
+    # 01 05 01 00 FF FF... → assist_level ECO, padded with FF
+    data = bytearray.fromhex("01050100" + "ff" * 16)
+    coord._notification_handler(0, data)
+
+    from specialized_turbo import AssistLevel
+
+    assert coord.snapshot.motor.assist_level == AssistLevel.ECO
+    assert coord.snapshot.message_count == 1

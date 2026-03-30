@@ -16,7 +16,10 @@ from custom_components.specialized_turbo.const import CONF_PIN, DOMAIN
 from .conftest import (
     MOCK_ADDRESS,
     MOCK_ADDRESS_FORMATTED,
+    MOCK_GEN1_ADDRESS,
+    MOCK_GEN1_ADDRESS_FORMATTED,
     MOCK_NAME,
+    make_gen1_service_info,
     make_service_info,
 )
 
@@ -451,3 +454,47 @@ async def test_reconfigure_flow_remove_pin(hass: HomeAssistant) -> None:
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "reconfigure_successful"
     assert entry.data[CONF_PIN] is None
+
+
+# --- Gen 1 Flows ---
+
+
+async def test_bluetooth_discovery_gen1(hass: HomeAssistant) -> None:
+    """Test bluetooth discovery for a Gen 1 Levo (Simplo manufacturer ID)."""
+    service_info = make_gen1_service_info()
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": config_entries.SOURCE_BLUETOOTH},
+        data=service_info,
+    )
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "bluetooth_confirm"
+
+    p1, p2 = _mock_connection_success()
+    with p1, p2:
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={},
+        )
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"]["address"] == MOCK_GEN1_ADDRESS
+
+
+async def test_user_flow_discovers_gen1(hass: HomeAssistant) -> None:
+    """Test user flow discovers Gen 1 bikes alongside Gen 2."""
+    gen1_info = make_gen1_service_info()
+    gen2_info = make_service_info()
+
+    with patch(
+        "custom_components.specialized_turbo.config_flow.async_discovered_service_info",
+        return_value=[gen1_info, gen2_info],
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={"source": config_entries.SOURCE_USER},
+        )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "user"
