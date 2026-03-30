@@ -80,9 +80,7 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
         try:
             await self._ensure_connected()
         except BleakError as err:
-            _LOGGER.debug(
-                "BLE connection unavailable for %s: %s", self._address, err
-            )
+            _LOGGER.debug("BLE connection unavailable for %s: %s", self._address, err)
             self._client = None
 
     async def _ensure_connected(self) -> None:
