@@ -197,9 +197,7 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
                     self._char_request_write, build_request(sender, channel)
                 )
                 await asyncio.sleep(0.1)
-                response = await self._client.read_gatt_char(
-                    self._char_request_read
-                )
+                response = await self._client.read_gatt_char(self._char_request_read)
                 msg = parse_message(response)
                 if msg.sender == sender and msg.channel == channel:
                     self.snapshot.update_from_message(msg)
