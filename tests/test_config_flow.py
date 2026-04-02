@@ -114,7 +114,7 @@ async def test_bluetooth_discovery(hass: HomeAssistant) -> None:
     with p1, p2:
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            user_input={CONF_PIN: 1234},
+            user_input={CONF_PIN: "1234"},
         )
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
@@ -180,7 +180,7 @@ async def test_bluetooth_confirm_cannot_connect_no_device(
     with p1, p2:
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            user_input={CONF_PIN: 1234},
+            user_input={CONF_PIN: "1234"},
         )
 
     assert result["type"] is FlowResultType.FORM
@@ -203,7 +203,7 @@ async def test_bluetooth_confirm_cannot_connect_bleak_error(
     with p1, p2:
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            user_input={CONF_PIN: 1234},
+            user_input={CONF_PIN: "1234"},
         )
 
     assert result["type"] is FlowResultType.FORM
@@ -226,7 +226,7 @@ async def test_bluetooth_confirm_cannot_connect_timeout(
     with p1, p2:
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            user_input={CONF_PIN: 1234},
+            user_input={CONF_PIN: "1234"},
         )
 
     assert result["type"] is FlowResultType.FORM
@@ -248,7 +248,7 @@ async def test_bluetooth_confirm_recover_from_error(hass: HomeAssistant) -> None
     with p1, p2:
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            user_input={CONF_PIN: 1234},
+            user_input={CONF_PIN: "1234"},
         )
     assert result["type"] is FlowResultType.FORM
     assert result["errors"] == {"base": "cannot_connect"}
@@ -258,7 +258,7 @@ async def test_bluetooth_confirm_recover_from_error(hass: HomeAssistant) -> None
     with p1, p2:
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            user_input={CONF_PIN: 1234},
+            user_input={CONF_PIN: "1234"},
         )
     assert result["type"] is FlowResultType.CREATE_ENTRY
 
@@ -286,7 +286,7 @@ async def test_user_flow(hass: HomeAssistant) -> None:
     with p1, p2:
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            user_input={"address": MOCK_ADDRESS, CONF_PIN: 5678},
+            user_input={"address": MOCK_ADDRESS, CONF_PIN: "5678"},
         )
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
@@ -336,7 +336,7 @@ async def test_user_flow_already_configured(hass: HomeAssistant) -> None:
     with p1, p2:
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            user_input={"address": MOCK_ADDRESS, CONF_PIN: 1234},
+            user_input={"address": MOCK_ADDRESS, CONF_PIN: "1234"},
         )
 
     assert result["type"] is FlowResultType.ABORT
@@ -367,7 +367,7 @@ async def test_user_flow_cannot_connect(hass: HomeAssistant) -> None:
     ):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            user_input={"address": MOCK_ADDRESS, CONF_PIN: 1234},
+            user_input={"address": MOCK_ADDRESS, CONF_PIN: "1234"},
         )
 
     assert result["type"] is FlowResultType.FORM
@@ -421,7 +421,7 @@ async def test_reconfigure_flow(hass: HomeAssistant) -> None:
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
-        user_input={CONF_PIN: 9999},
+        user_input={CONF_PIN: "9999"},
     )
 
     assert result["type"] is FlowResultType.ABORT

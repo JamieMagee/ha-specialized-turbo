@@ -72,11 +72,12 @@ class SpecializedTurboConfigFlow(ConfigFlow, domain=DOMAIN):
             if not await self._async_test_connection(self._discovery_info.address):
                 errors["base"] = "cannot_connect"
             else:
+                pin_str = user_input.get(CONF_PIN)
                 return self.async_create_entry(
                     title=self._discovery_info.name or "Specialized Turbo",
                     data={
                         CONF_ADDRESS: self._discovery_info.address,
-                        CONF_PIN: user_input.get(CONF_PIN),
+                        CONF_PIN: int(pin_str) if pin_str else None,
                     },
                 )
 
@@ -84,7 +85,7 @@ class SpecializedTurboConfigFlow(ConfigFlow, domain=DOMAIN):
             step_id="bluetooth_confirm",
             data_schema=vol.Schema(
                 {
-                    vol.Optional(CONF_PIN): vol.Coerce(int),
+                    vol.Optional(CONF_PIN): str,
                 }
             ),
             description_placeholders={
@@ -108,11 +109,12 @@ class SpecializedTurboConfigFlow(ConfigFlow, domain=DOMAIN):
             if not await self._async_test_connection(address):
                 errors["base"] = "cannot_connect"
             else:
+                pin_str = user_input.get(CONF_PIN)
                 return self.async_create_entry(
                     title=self._discovered_devices.get(address, address),
                     data={
                         CONF_ADDRESS: address,
-                        CONF_PIN: user_input.get(CONF_PIN),
+                        CONF_PIN: int(pin_str) if pin_str else None,
                     },
                 )
 
@@ -137,7 +139,7 @@ class SpecializedTurboConfigFlow(ConfigFlow, domain=DOMAIN):
             data_schema=vol.Schema(
                 {
                     vol.Required(CONF_ADDRESS): vol.In(address_options),
-                    vol.Optional(CONF_PIN): vol.Coerce(int),
+                    vol.Optional(CONF_PIN): str,
                 }
             ),
             errors=errors,
@@ -148,16 +150,17 @@ class SpecializedTurboConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         """Handle reconfiguration to update the pairing PIN."""
         if user_input is not None:
+            pin_str = user_input.get(CONF_PIN)
             return self.async_update_reload_and_abort(
                 self._get_reconfigure_entry(),
-                data_updates={CONF_PIN: user_input.get(CONF_PIN)},
+                data_updates={CONF_PIN: int(pin_str) if pin_str else None},
             )
 
         return self.async_show_form(
             step_id="reconfigure",
             data_schema=vol.Schema(
                 {
-                    vol.Optional(CONF_PIN): vol.Coerce(int),
+                    vol.Optional(CONF_PIN): str,
                 }
             ),
         )
