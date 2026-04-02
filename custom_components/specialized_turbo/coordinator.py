@@ -2,11 +2,17 @@
 
 Connects over BLE, subscribes to GATT notifications, parses incoming
 telemetry, and pushes updates to HA entities.
+
+Gen 1 bikes only push a handful of fields via notifications. The
+coordinator uses the request-read GATT pattern to poll the remaining
+fields periodically.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import time
 
 from bleak import BleakClient, BleakError
 from bleak.backends.characteristic import BleakGATTCharacteristic
@@ -20,14 +26,21 @@ from homeassistant.core import HomeAssistant, callback
 
 from specialized_turbo import (
     CHAR_NOTIFY,
+    GEN1_POLL_FIELDS,
     ProtocolGeneration,
     TelemetrySnapshot,
+    build_request,
     detect_generation,
     get_char_notify,
+    get_char_request_read,
+    get_char_request_write,
     parse_message,
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+# How often to re-poll Gen 1 fields (seconds)
+_GEN1_POLL_INTERVAL = 60
 
 
 class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
@@ -57,6 +70,9 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
         self._client: BleakClient | None = None
         self._was_unavailable = False
         self._generation: ProtocolGeneration | None = None
+        self._char_request_write: str | None = None
+        self._char_request_read: str | None = None
+        self._last_poll_time: float = 0
 
     @callback
     def _needs_poll(
@@ -64,13 +80,18 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
         service_info: bluetooth.BluetoothServiceInfoBleak,
         seconds_since_last_update: float | None,
     ) -> bool:
-        """True if we need to (re)connect to the bike."""
+        """True if we need to (re)connect or re-poll Gen 1 fields."""
         # Detect generation early from advertisement data
         if self._generation is None:
             gen = detect_generation(service_info.manufacturer_data)
             if gen is not None:
                 self._generation = gen
-        return self._client is None or not self._client.is_connected
+        if self._client is None or not self._client.is_connected:
+            return True
+        # Gen 1: periodically re-poll request-read fields
+        if self._generation == ProtocolGeneration.GEN_1:
+            return (time.monotonic() - self._last_poll_time) >= _GEN1_POLL_INTERVAL
+        return False
 
     async def _do_poll(
         self,
@@ -82,6 +103,15 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
         except BleakError as err:
             _LOGGER.debug("BLE connection unavailable for %s: %s", self._address, err)
             self._client = None
+            return
+
+        # Poll Gen 1 fields via request-read
+        if (
+            self._generation == ProtocolGeneration.GEN_1
+            and self._client
+            and self._client.is_connected
+        ):
+            await self._poll_gen1_fields()
 
     async def _ensure_connected(self) -> None:
         """Establish BLE connection and subscribe to notifications."""
@@ -118,6 +148,11 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
             else CHAR_NOTIFY
         )
 
+        # Resolve request-read UUIDs for Gen 1 polling
+        if self._generation is not None:
+            self._char_request_write = get_char_request_write(self._generation)
+            self._char_request_read = get_char_request_read(self._generation)
+
         # Trigger pairing if PIN is provided
         if self._pin is not None:
             try:
@@ -149,6 +184,44 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
 
         if msg.field_name:
             _LOGGER.debug("%s = %s %s", msg.field_name, msg.converted_value, msg.unit)
+
+    async def _poll_gen1_fields(self) -> None:
+        """Query all Gen 1 fields via the request-read GATT pattern."""
+        if self._client is None or self._char_request_write is None:
+            return
+
+        updated = False
+        for sender, channel in GEN1_POLL_FIELDS:
+            try:
+                await self._client.write_gatt_char(
+                    self._char_request_write, build_request(sender, channel)
+                )
+                await asyncio.sleep(0.1)
+                response = await self._client.read_gatt_char(
+                    self._char_request_read
+                )
+                msg = parse_message(response)
+                if msg.sender == sender and msg.channel == channel:
+                    self.snapshot.update_from_message(msg)
+                    updated = True
+                    if msg.field_name:
+                        _LOGGER.debug(
+                            "poll %s = %s %s",
+                            msg.field_name,
+                            msg.converted_value,
+                            msg.unit,
+                        )
+            except Exception:
+                _LOGGER.debug(
+                    "Failed to poll field (%02x, %02x)",
+                    sender,
+                    channel,
+                    exc_info=True,
+                )
+
+        self._last_poll_time = time.monotonic()
+        if updated:
+            self.async_update_listeners()
 
     @property
     def connected(self) -> bool:
