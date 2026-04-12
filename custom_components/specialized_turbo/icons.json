@@ -30,6 +30,27 @@
       },
       "assist_turbo_pct": {
         "default": "mdi:rocket-launch"
+      },
+      "range_long": {
+        "default": "mdi:map-marker-distance"
+      },
+      "range_short": {
+        "default": "mdi:map-marker-distance"
+      },
+      "altitude": {
+        "default": "mdi:altimeter"
+      },
+      "altitude_gain": {
+        "default": "mdi:slope-uphill"
+      },
+      "gradient": {
+        "default": "mdi:slope-uphill"
+      },
+      "consumption": {
+        "default": "mdi:lightning-bolt-circle"
+      },
+      "kcal": {
+        "default": "mdi:fire"
       }
     }
   }

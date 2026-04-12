@@ -29,5 +29,6 @@ async def async_get_config_entry_diagnostics(
             "battery": asdict(snapshot.battery),
             "motor": asdict(snapshot.motor),
             "settings": asdict(snapshot.settings),
+            "system": asdict(snapshot.system),
         },
     }

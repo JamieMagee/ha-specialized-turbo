@@ -163,35 +163,35 @@ def test_assist_level_name_off() -> None:
     """Test assist level name for OFF."""
     snap = TelemetrySnapshot()
     snap.motor.assist_level = AssistLevel.OFF
-    assert _assist_level_name(snap) == "Off"
+    assert _assist_level_name(snap) == "off"
 
 
 def test_assist_level_name_eco() -> None:
     """Test assist level name for ECO."""
     snap = TelemetrySnapshot()
     snap.motor.assist_level = AssistLevel.ECO
-    assert _assist_level_name(snap) == "Eco"
+    assert _assist_level_name(snap) == "eco"
 
 
 def test_assist_level_name_trail() -> None:
     """Test assist level name for TRAIL."""
     snap = TelemetrySnapshot()
     snap.motor.assist_level = AssistLevel.TRAIL
-    assert _assist_level_name(snap) == "Trail"
+    assert _assist_level_name(snap) == "trail"
 
 
 def test_assist_level_name_turbo() -> None:
     """Test assist level name for TURBO."""
     snap = TelemetrySnapshot()
     snap.motor.assist_level = AssistLevel.TURBO
-    assert _assist_level_name(snap) == "Turbo"
+    assert _assist_level_name(snap) == "turbo"
 
 
 def test_assist_level_name_unknown_int() -> None:
     """Test assist level name with unknown int value."""
     snap = TelemetrySnapshot()
     snap.motor.assist_level = 99
-    assert _assist_level_name(snap) == "99"
+    assert _assist_level_name(snap) is None
 
 
 # --- Sensor description metadata ---
@@ -199,7 +199,7 @@ def test_assist_level_name_unknown_int() -> None:
 
 def test_sensor_descriptions_count() -> None:
     """Test that all 18 sensor descriptions are defined."""
-    assert len(SENSOR_DESCRIPTIONS) == 18
+    assert len(SENSOR_DESCRIPTIONS) == 26
 
 
 def test_parallel_updates_zero() -> None:

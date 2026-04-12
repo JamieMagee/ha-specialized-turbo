@@ -98,6 +98,30 @@
       },
       "assist_turbo_pct": {
         "name": "Turbo assist"
+      },
+      "range_long": {
+        "name": "Range (long)"
+      },
+      "range_short": {
+        "name": "Range (short)"
+      },
+      "altitude": {
+        "name": "Altitude"
+      },
+      "altitude_gain": {
+        "name": "Altitude gain"
+      },
+      "gradient": {
+        "name": "Gradient"
+      },
+      "system_temp": {
+        "name": "System temperature"
+      },
+      "consumption": {
+        "name": "Consumption"
+      },
+      "kcal": {
+        "name": "Calories"
       }
     }
   }

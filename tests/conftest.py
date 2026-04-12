@@ -33,7 +33,7 @@ MOCK_ADDRESS_FORMATTED = "dc:dd:bb:4a:d6:55"
 MOCK_NAME = "SPECIALIZED"
 MOCK_MANUFACTURER_DATA: dict[int, bytes] = {0x0059: b"TURBOHMItest1234"}
 
-# Gen 1 (2018 Levo) test data
+# TCU1 (2018 Levo) test data
 MOCK_GEN1_ADDRESS = "C6:1A:10:12:5E:48"
 MOCK_GEN1_ADDRESS_FORMATTED = "c6:1a:10:12:5e:48"
 MOCK_GEN1_NAME = "SPECIALIZED"
@@ -57,12 +57,12 @@ def make_service_info(
     return info
 
 
-def make_gen1_service_info(
+def make_tcu1_service_info(
     name: str = MOCK_GEN1_NAME,
     address: str = MOCK_GEN1_ADDRESS,
     manufacturer_data: dict[int, bytes] | None = None,
 ) -> MagicMock:
-    """Create a mock BluetoothServiceInfoBleak for a Gen 1 bike."""
+    """Create a mock BluetoothServiceInfoBleak for a TCU1 bike."""
     info = MagicMock()
     info.name = name
     info.address = address

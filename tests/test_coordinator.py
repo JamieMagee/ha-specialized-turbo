@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+
+import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from bleak import BleakError
@@ -12,7 +14,7 @@ from homeassistant.core import HomeAssistant
 from custom_components.specialized_turbo.coordinator import (
     SpecializedTurboCoordinator,
 )
-from specialized_turbo import CHAR_NOTIFY, CHAR_NOTIFY_GEN1, ProtocolGeneration
+from specialized_turbo import CHAR_NOTIFY, CHAR_NOTIFY_TCU1, BLEProfile
 
 from .conftest import MOCK_ADDRESS, MOCK_GEN1_MANUFACTURER_DATA
 
@@ -74,7 +76,7 @@ async def test_needs_poll_after_disconnect_reconnect(hass: HomeAssistant) -> Non
     assert coord._needs_poll(MagicMock(), None) is False
 
     # Simulate bike leaving (disconnect callback fires)
-    coord._on_disconnect(mock_client)
+    coord._handle_disconnect()
     assert coord._client is None
 
     # Bike comes back in range — needs_poll must return True to reconnect
@@ -102,7 +104,7 @@ async def test_notification_handler_valid(hass: HomeAssistant) -> None:
 
     # Battery charge percent: sender=0x00, channel=0x0C, value=85 (0x55)
     data = bytearray([0x00, 0x0C, 0x55])
-    coord._notification_handler(0, data)
+    coord._handle_notification(bytes(data))
 
     assert coord.snapshot.battery.charge_pct == 85
     assert coord.snapshot.message_count == 1
@@ -115,7 +117,7 @@ async def test_notification_handler_speed(hass: HomeAssistant) -> None:
 
     # Speed: sender=0x01, channel=0x02, value=255 (25.5 km/h) as 2 bytes LE
     data = bytearray([0x01, 0x02, 0xFF, 0x00])
-    coord._notification_handler(0, data)
+    coord._handle_notification(bytes(data))
 
     assert coord.snapshot.motor.speed_kmh == 25.5
     assert coord.snapshot.message_count == 1
@@ -127,7 +129,7 @@ async def test_notification_handler_parse_error(hass: HomeAssistant) -> None:
 
     # Too short to parse (< 3 bytes)
     data = bytearray([0x00])
-    coord._notification_handler(0, data)
+    coord._handle_notification(bytes(data))
 
     assert coord.snapshot.message_count == 0
     coord.async_update_listeners.assert_not_called()
@@ -139,7 +141,7 @@ async def test_notification_handler_unknown_field(hass: HomeAssistant) -> None:
 
     # Unknown sender 0x03
     data = bytearray([0x03, 0x00, 0x42])
-    coord._notification_handler(0, data)
+    coord._handle_notification(bytes(data))
 
     assert coord.snapshot.message_count == 1
     coord.async_update_listeners.assert_called_once()
@@ -348,7 +350,7 @@ async def test_on_disconnect(hass: HomeAssistant) -> None:
     coord = _make_coordinator(hass)
     coord._client = MagicMock()
 
-    coord._on_disconnect(MagicMock())
+    coord._handle_disconnect()
 
     assert coord._was_unavailable is True
     assert coord._client is None
@@ -361,7 +363,7 @@ async def test_on_disconnect_already_unavailable(hass: HomeAssistant) -> None:
     coord._was_unavailable = True
     coord._client = MagicMock()
 
-    coord._on_disconnect(MagicMock())
+    coord._handle_disconnect()
 
     assert coord._was_unavailable is True
     assert coord._client is None
@@ -412,7 +414,7 @@ async def test_async_shutdown_errors(hass: HomeAssistant) -> None:
 
 
 async def test_do_poll_bleak_error_from_start_notify(hass: HomeAssistant) -> None:
-    """Test that BleakError during start_notify is caught and client is cleared."""
+    """Test that BleakError during start_notify propagates and client is cleared."""
     coord = _make_coordinator(hass)
 
     mock_client = AsyncMock()
@@ -429,8 +431,9 @@ async def test_do_poll_bleak_error_from_start_notify(hass: HomeAssistant) -> Non
             new_callable=AsyncMock,
             return_value=mock_client,
         ),
+        pytest.raises(BleakError),
     ):
-        await coord._do_poll()  # should not raise
+        await coord._do_poll()
 
     assert coord._client is None
 
@@ -438,7 +441,7 @@ async def test_do_poll_bleak_error_from_start_notify(hass: HomeAssistant) -> Non
 async def test_do_poll_bleak_error_from_establish_connection(
     hass: HomeAssistant,
 ) -> None:
-    """Test that BleakError during establish_connection is caught."""
+    """Test that BleakError during establish_connection propagates."""
     coord = _make_coordinator(hass)
 
     with (
@@ -451,30 +454,31 @@ async def test_do_poll_bleak_error_from_establish_connection(
             new_callable=AsyncMock,
             side_effect=BleakError("Failed to connect"),
         ),
+        pytest.raises(BleakError),
     ):
-        await coord._do_poll()  # should not raise
+        await coord._do_poll()
 
     assert coord._client is None
 
 
-# --- Gen 1 support ---
+# --- TCU1 support ---
 
 
-async def test_needs_poll_detects_gen1(hass: HomeAssistant) -> None:
-    """Test _needs_poll detects Gen 1 protocol from manufacturer data."""
+async def test_needs_poll_detects_tcu1(hass: HomeAssistant) -> None:
+    """Test _needs_poll detects TCU1 protocol from manufacturer data."""
     coord = _make_coordinator(hass)
     service_info = MagicMock()
     service_info.manufacturer_data = MOCK_GEN1_MANUFACTURER_DATA
     coord._needs_poll(service_info, None)
-    assert coord._generation == ProtocolGeneration.GEN_1
+    assert coord._generation == BLEProfile.TCU1
 
 
-async def test_ensure_connected_gen1_uses_gen1_char_notify(
+async def test_ensure_connected_tcu1_uses_tcu1_char_notify(
     hass: HomeAssistant,
 ) -> None:
-    """Test ensure_connected subscribes to Gen 1 CHAR_NOTIFY UUID."""
+    """Test ensure_connected subscribes to TCU1 CHAR_NOTIFY UUID."""
     coord = _make_coordinator(hass)
-    coord._generation = ProtocolGeneration.GEN_1
+    coord._generation = BLEProfile.TCU1
 
     mock_client = AsyncMock()
     mock_client.is_connected = True
@@ -493,18 +497,18 @@ async def test_ensure_connected_gen1_uses_gen1_char_notify(
         await coord._ensure_connected()
 
     mock_client.start_notify.assert_called_once_with(
-        CHAR_NOTIFY_GEN1, coord._notification_handler
+        CHAR_NOTIFY_TCU1, coord._notification_handler
     )
 
 
-async def test_gen1_notification_with_ff_padding(hass: HomeAssistant) -> None:
-    """Test Gen 1 notifications with FF padding parse correctly."""
+async def test_tcu1_notification_with_ff_padding(hass: HomeAssistant) -> None:
+    """Test TCU1 notifications with FF padding parse correctly."""
     coord = _make_coordinator(hass)
-    coord._generation = ProtocolGeneration.GEN_1
+    coord._generation = BLEProfile.TCU1
 
     # 01 05 01 00 FF FF... → assist_level ECO, padded with FF
     data = bytearray.fromhex("01050100" + "ff" * 16)
-    coord._notification_handler(0, data)
+    coord._handle_notification(bytes(data))
 
     from specialized_turbo import AssistLevel
 

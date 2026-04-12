@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 from typing import Any
 
 from bleak import BleakClient
@@ -21,8 +20,6 @@ from homeassistant.helpers.device_registry import format_mac
 
 from .const import CONF_PIN, DOMAIN
 from specialized_turbo import is_specialized_advertisement
-
-_LOGGER = logging.getLogger(__name__)
 
 
 class SpecializedTurboConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -111,7 +108,7 @@ class SpecializedTurboConfigFlow(ConfigFlow, domain=DOMAIN):
             else:
                 pin_str = user_input.get(CONF_PIN)
                 return self.async_create_entry(
-                    title=self._discovered_devices.get(address, address),
+                    title=self._discovered_devices[address].name or "Specialized Turbo",
                     data={
                         CONF_ADDRESS: address,
                         CONF_PIN: int(pin_str) if pin_str else None,
@@ -121,7 +118,7 @@ class SpecializedTurboConfigFlow(ConfigFlow, domain=DOMAIN):
         # Discover available Specialized bikes
         current_addresses = self._async_current_ids()
         for info in async_discovered_service_info(self.hass):
-            if info.address in current_addresses:
+            if format_mac(info.address) in current_addresses:
                 continue
             if _is_specialized_service_info(info):
                 self._discovered_devices[info.address] = info

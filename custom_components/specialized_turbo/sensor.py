@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -13,8 +12,10 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.const import (
+    CONF_ADDRESS,
     EntityCategory,
     PERCENTAGE,
+    REVOLUTIONS_PER_MINUTE,
     UnitOfElectricCurrent,
     UnitOfElectricPotential,
     UnitOfEnergy,
@@ -24,13 +25,18 @@ from homeassistant.const import (
     UnitOfTemperature,
 )
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.device_registry import DeviceInfo, format_mac
+from homeassistant.helpers.device_registry import (
+    CONNECTION_BLUETOOTH,
+    DeviceInfo,
+    format_mac,
+)
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import SpecializedTurboConfigEntry
-from .const import DOMAIN
 from .coordinator import SpecializedTurboCoordinator
+from homeassistant.helpers.typing import StateType
+
 from specialized_turbo import AssistLevel, TelemetrySnapshot
 
 PARALLEL_UPDATES = 0
@@ -40,17 +46,17 @@ PARALLEL_UPDATES = 0
 class SpecializedSensorEntityDescription(SensorEntityDescription):
     """Describes a Specialized Turbo sensor entity."""
 
-    value_fn: Callable[[TelemetrySnapshot], Any]
+    value_fn: Callable[[TelemetrySnapshot], StateType]
 
 
 def _assist_level_name(snap: TelemetrySnapshot) -> str | None:
-    """Return assist level as a human-readable string."""
+    """Return assist level as a lowercase string, or None if unknown."""
     level = snap.motor.assist_level
     if level is None:
         return None
     if isinstance(level, AssistLevel):
-        return str(level.name.capitalize())
-    return str(level)
+        return level.name.lower()
+    return None
 
 
 SENSOR_DESCRIPTIONS: tuple[SpecializedSensorEntityDescription, ...] = (
@@ -111,6 +117,7 @@ SENSOR_DESCRIPTIONS: tuple[SpecializedSensorEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda s: s.battery.voltage_v,
+        suggested_display_precision=1,
     ),
     SpecializedSensorEntityDescription(
         key="battery_current",
@@ -120,6 +127,7 @@ SENSOR_DESCRIPTIONS: tuple[SpecializedSensorEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda s: s.battery.current_a,
+        suggested_display_precision=1,
     ),
     # --- Motor / Rider ---
     SpecializedSensorEntityDescription(
@@ -129,6 +137,7 @@ SENSOR_DESCRIPTIONS: tuple[SpecializedSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.SPEED,
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda s: s.motor.speed_kmh,
+        suggested_display_precision=1,
     ),
     SpecializedSensorEntityDescription(
         key="rider_power",
@@ -149,9 +158,10 @@ SENSOR_DESCRIPTIONS: tuple[SpecializedSensorEntityDescription, ...] = (
     SpecializedSensorEntityDescription(
         key="cadence",
         translation_key="cadence",
-        native_unit_of_measurement="RPM",
+        native_unit_of_measurement=REVOLUTIONS_PER_MINUTE,
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda s: s.motor.cadence_rpm,
+        suggested_display_precision=0,
     ),
     SpecializedSensorEntityDescription(
         key="odometer",
@@ -160,6 +170,7 @@ SENSOR_DESCRIPTIONS: tuple[SpecializedSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.DISTANCE,
         state_class=SensorStateClass.TOTAL_INCREASING,
         value_fn=lambda s: s.motor.odometer_km,
+        suggested_display_precision=1,
     ),
     SpecializedSensorEntityDescription(
         key="motor_temp",
@@ -173,6 +184,8 @@ SENSOR_DESCRIPTIONS: tuple[SpecializedSensorEntityDescription, ...] = (
     SpecializedSensorEntityDescription(
         key="assist_level",
         translation_key="assist_level",
+        device_class=SensorDeviceClass.ENUM,
+        options=["off", "eco", "trail", "turbo"],
         value_fn=_assist_level_name,
     ),
     # --- Settings (informational) ---
@@ -199,6 +212,79 @@ SENSOR_DESCRIPTIONS: tuple[SpecializedSensorEntityDescription, ...] = (
         entity_registry_enabled_default=False,
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda s: s.settings.assist_lev3_pct,
+    ),
+    # --- System (TCX2+ only, disabled by default) ---
+    SpecializedSensorEntityDescription(
+        key="range_long",
+        translation_key="range_long",
+        native_unit_of_measurement=UnitOfLength.KILOMETERS,
+        device_class=SensorDeviceClass.DISTANCE,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+        value_fn=lambda s: s.system.range_long_km,
+        suggested_display_precision=1,
+    ),
+    SpecializedSensorEntityDescription(
+        key="range_short",
+        translation_key="range_short",
+        native_unit_of_measurement=UnitOfLength.KILOMETERS,
+        device_class=SensorDeviceClass.DISTANCE,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+        value_fn=lambda s: s.system.range_short_km,
+        suggested_display_precision=1,
+    ),
+    SpecializedSensorEntityDescription(
+        key="altitude",
+        translation_key="altitude",
+        native_unit_of_measurement=UnitOfLength.METERS,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+        value_fn=lambda s: s.system.altitude_m,
+    ),
+    SpecializedSensorEntityDescription(
+        key="altitude_gain",
+        translation_key="altitude_gain",
+        native_unit_of_measurement=UnitOfLength.METERS,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        entity_registry_enabled_default=False,
+        value_fn=lambda s: s.system.altitude_gain_m,
+    ),
+    SpecializedSensorEntityDescription(
+        key="gradient",
+        translation_key="gradient",
+        native_unit_of_measurement=PERCENTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+        value_fn=lambda s: s.system.gradient_pct,
+        suggested_display_precision=1,
+    ),
+    SpecializedSensorEntityDescription(
+        key="system_temp",
+        translation_key="system_temp",
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda s: s.system.system_temp_c,
+    ),
+    SpecializedSensorEntityDescription(
+        key="consumption",
+        translation_key="consumption",
+        native_unit_of_measurement="Wh/km",
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+        value_fn=lambda s: s.system.consumption_wh_km,
+        suggested_display_precision=1,
+    ),
+    SpecializedSensorEntityDescription(
+        key="kcal",
+        translation_key="kcal",
+        native_unit_of_measurement="kcal",
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        entity_registry_enabled_default=False,
+        value_fn=lambda s: s.system.kcal,
     ),
 )
 
@@ -236,20 +322,17 @@ class SpecializedTurboSensor(
         """Initialize the sensor."""
         super().__init__(coordinator)
         self.entity_description = description
-        self._attr_unique_id = f"{format_mac(entry.data['address'])}_{description.key}"
+        self._attr_unique_id = (
+            f"{format_mac(entry.data[CONF_ADDRESS])}_{description.key}"
+        )
         self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, format_mac(entry.data["address"]))},
+            connections={(CONNECTION_BLUETOOTH, entry.data[CONF_ADDRESS])},
             name=entry.title,
             manufacturer="Specialized",
             model="Turbo",
         )
 
     @property
-    def native_value(self) -> Any:
+    def native_value(self) -> StateType:
         """Return the sensor value from the coordinator's snapshot."""
         return self.entity_description.value_fn(self.coordinator.snapshot)
-
-    @property
-    def available(self) -> bool:
-        """Return True if the bike is connected."""
-        return self.coordinator.connected

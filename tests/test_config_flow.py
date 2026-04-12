@@ -17,9 +17,8 @@ from .conftest import (
     MOCK_ADDRESS,
     MOCK_ADDRESS_FORMATTED,
     MOCK_GEN1_ADDRESS,
-    MOCK_GEN1_ADDRESS_FORMATTED,
     MOCK_NAME,
-    make_gen1_service_info,
+    make_tcu1_service_info,
     make_service_info,
 )
 
@@ -310,7 +309,7 @@ async def test_user_flow_no_devices(hass: HomeAssistant) -> None:
 
 
 async def test_user_flow_already_configured(hass: HomeAssistant) -> None:
-    """Test user flow aborts when selecting an already configured device."""
+    """Test user flow filters out already configured devices."""
     entry = MockConfigEntry(
         domain=DOMAIN,
         data={"address": MOCK_ADDRESS},
@@ -318,7 +317,7 @@ async def test_user_flow_already_configured(hass: HomeAssistant) -> None:
     )
     entry.add_to_hass(hass)
 
-    # Discover the already-configured address so it appears in the form
+    # The only discovered device is already configured — should abort
     service_info = make_service_info()
     with patch(
         "custom_components.specialized_turbo.config_flow.async_discovered_service_info",
@@ -329,18 +328,8 @@ async def test_user_flow_already_configured(hass: HomeAssistant) -> None:
             context={"source": config_entries.SOURCE_USER},
         )
 
-    assert result["type"] is FlowResultType.FORM
-
-    # Submit the already-configured address
-    p1, p2 = _mock_connection_success()
-    with p1, p2:
-        result = await hass.config_entries.flow.async_configure(
-            result["flow_id"],
-            user_input={"address": MOCK_ADDRESS, CONF_PIN: "1234"},
-        )
-
     assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    assert result["reason"] == "no_devices_found"
 
 
 async def test_user_flow_cannot_connect(hass: HomeAssistant) -> None:
@@ -456,12 +445,12 @@ async def test_reconfigure_flow_remove_pin(hass: HomeAssistant) -> None:
     assert entry.data[CONF_PIN] is None
 
 
-# --- Gen 1 Flows ---
+# --- TCU1 Flows ---
 
 
-async def test_bluetooth_discovery_gen1(hass: HomeAssistant) -> None:
-    """Test bluetooth discovery for a Gen 1 Levo (Simplo manufacturer ID)."""
-    service_info = make_gen1_service_info()
+async def test_bluetooth_discovery_tcu1(hass: HomeAssistant) -> None:
+    """Test bluetooth discovery for a TCU1 Levo (Simplo manufacturer ID)."""
+    service_info = make_tcu1_service_info()
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -482,14 +471,14 @@ async def test_bluetooth_discovery_gen1(hass: HomeAssistant) -> None:
     assert result["data"]["address"] == MOCK_GEN1_ADDRESS
 
 
-async def test_user_flow_discovers_gen1(hass: HomeAssistant) -> None:
-    """Test user flow discovers Gen 1 bikes alongside Gen 2."""
-    gen1_info = make_gen1_service_info()
-    gen2_info = make_service_info()
+async def test_user_flow_discovers_tcu1(hass: HomeAssistant) -> None:
+    """Test user flow discovers TCU1 bikes alongside TCX."""
+    tcu1_info = make_tcu1_service_info()
+    tcx_info = make_service_info()
 
     with patch(
         "custom_components.specialized_turbo.config_flow.async_discovered_service_info",
-        return_value=[gen1_info, gen2_info],
+        return_value=[tcu1_info, tcx_info],
     ):
         result = await hass.config_entries.flow.async_init(
             DOMAIN,
