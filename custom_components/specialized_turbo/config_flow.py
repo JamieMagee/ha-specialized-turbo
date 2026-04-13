@@ -40,7 +40,7 @@ class SpecializedTurboConfigFlow(ConfigFlow, domain=DOMAIN):
         try:
             client = await establish_connection(BleakClient, ble_device, address)
             await client.disconnect()
-        except (BleakError, TimeoutError):
+        except BleakError, TimeoutError:
             return False
         return True
 
