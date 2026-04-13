@@ -334,8 +334,10 @@ class SpecializedTurboSensor(
 
     @property
     def available(self) -> bool:
-        """Return True once at least one BLE message has been parsed."""
-        return self.coordinator.snapshot.message_count > 0
+        """Return True when the bike is connected and has sent data."""
+        return (
+            self.coordinator.connected and self.coordinator.snapshot.message_count > 0
+        )
 
     @property
     def native_value(self) -> StateType:
