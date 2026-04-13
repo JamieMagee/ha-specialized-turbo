@@ -2,11 +2,11 @@
 name = "ha-specialized-turbo"
 version = "0.3.2"
 description = "Specialized Turbo BLE integration for Home Assistant"
-requires-python = ">=3.13.2"
+requires-python = ">=3.14"
 
 [tool.uv]
 python-preference = "managed"
-environments = ["python_version >= '3.13'"]
+environments = ["python_version >= '3.14'"]
 
 [dependency-groups]
 dev = [
