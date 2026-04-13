@@ -333,6 +333,11 @@ class SpecializedTurboSensor(
         )
 
     @property
+    def available(self) -> bool:
+        """Return True once at least one BLE message has been parsed."""
+        return self.coordinator.snapshot.message_count > 0
+
+    @property
     def native_value(self) -> StateType:
         """Return the sensor value from the coordinator's snapshot."""
         return self.entity_description.value_fn(self.coordinator.snapshot)

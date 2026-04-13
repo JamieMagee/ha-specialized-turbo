@@ -9,6 +9,8 @@ from homeassistant.const import CONF_ADDRESS
 from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from specialized_turbo import TelemetrySnapshot
+
 from custom_components.specialized_turbo.const import CONF_PIN, DOMAIN
 
 from .conftest import MOCK_ADDRESS, MOCK_ADDRESS_FORMATTED
@@ -24,6 +26,7 @@ async def test_setup_entry(hass: HomeAssistant) -> None:
     entry.add_to_hass(hass)
 
     mock_coordinator = MagicMock()
+    mock_coordinator.snapshot = TelemetrySnapshot()
     mock_coordinator.async_start.return_value = lambda: None
     mock_coordinator.async_shutdown = AsyncMock()
 
@@ -48,6 +51,7 @@ async def test_setup_entry_device_not_in_range(hass: HomeAssistant) -> None:
     entry.add_to_hass(hass)
 
     mock_coordinator = MagicMock()
+    mock_coordinator.snapshot = TelemetrySnapshot()
     mock_coordinator.async_start.return_value = lambda: None
     mock_coordinator.async_shutdown = AsyncMock()
 
@@ -71,6 +75,7 @@ async def test_setup_entry_no_pin(hass: HomeAssistant) -> None:
     entry.add_to_hass(hass)
 
     mock_coordinator = MagicMock()
+    mock_coordinator.snapshot = TelemetrySnapshot()
     mock_coordinator.async_start.return_value = lambda: None
     mock_coordinator.async_shutdown = AsyncMock()
 
@@ -94,6 +99,7 @@ async def test_unload_entry(hass: HomeAssistant) -> None:
     entry.add_to_hass(hass)
 
     mock_coordinator = MagicMock()
+    mock_coordinator.snapshot = TelemetrySnapshot()
     mock_coordinator.async_start.return_value = lambda: None
     mock_coordinator.async_shutdown = AsyncMock()
 
