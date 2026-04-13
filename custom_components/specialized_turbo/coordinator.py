@@ -97,6 +97,9 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
         self._char_request_write: str | None = None
         self._char_request_read: str | None = None
         self._last_poll_time: float = 0
+        # True once we've seen a CRC-framed (TCX) notification.
+        # Some bikes advertise TCX UUIDs but send TCU1-format messages.
+        self._uses_tcx_messages: bool | None = None
 
     @callback
     def _needs_poll(
@@ -112,13 +115,11 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
                 self._generation = gen
         if self._client is None or not self._client.is_connected:
             return True
-        # TCU1: periodically re-poll request-read fields
-        if self._generation == BLEProfile.TCU1:
-            return (time.monotonic() - self._last_poll_time) >= _TCU1_POLL_INTERVAL
-        # TCX: periodically poll system fields not pushed via notifications
-        if self._generation == BLEProfile.TCX:
-            return (time.monotonic() - self._last_poll_time) >= _TCU1_POLL_INTERVAL
-        return False
+        # Periodically re-poll fields via request-read.  Skip until the
+        # first poll interval has elapsed after connection.
+        if self._last_poll_time == 0:
+            return False
+        return (time.monotonic() - self._last_poll_time) >= _TCU1_POLL_INTERVAL
 
     async def _do_poll(
         self,
@@ -131,21 +132,17 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
             self._client = None
             raise
 
-        # Poll TCU1 fields via request-read
-        if (
-            self._generation == BLEProfile.TCU1
-            and self._client
-            and self._client.is_connected
-        ):
-            await self._poll_tcu1_fields()
-
-        # Poll TCX system fields via request-read
-        if (
-            self._generation == BLEProfile.TCX
-            and self._client
-            and self._client.is_connected
-        ):
-            await self._poll_tcx_fields()
+        # Poll fields via request-read.  Use the message format detected
+        # from notifications rather than the BLE profile, since some bikes
+        # advertise TCX UUIDs but send TCU1-format messages.
+        # Default to TCU1 polling until the first notification reveals the
+        # actual format — TCU1 polls are harmless on TCX bikes (they just
+        # return no data), while TCX polls on a TCU1 bike produce garbage.
+        if self._client and self._client.is_connected:
+            if self._uses_tcx_messages is True:
+                await self._poll_tcx_fields()
+            else:
+                await self._poll_tcu1_fields()
 
     async def _ensure_connected(
         self,
@@ -228,23 +225,47 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
     @callback
     def _handle_notification(self, data: bytes) -> None:
         """Parse a BLE notification and push the update to HA."""
+        _LOGGER.debug(
+            "notify raw (%d bytes, gen=%s, session=%s): %s",
+            len(data),
+            self._generation,
+            type(self._session).__name__,
+            data.hex(),
+        )
+
+        # Auto-detect message format from the data itself.
+        # CRC-framed 20-byte packets → TCX parameter ID format.
+        # Anything else (e.g. 0xFF-padded) → TCU1 sender/channel format.
+        # Some bikes advertise TCX UUIDs but send TCU1-format messages.
+        framed = is_framed_packet(data)
+        if self._uses_tcx_messages is None:
+            self._uses_tcx_messages = framed
+            _LOGGER.info(
+                "Auto-detected message format: %s",
+                "TCX" if framed else "TCU1",
+            )
+
         try:
-            unpacked = self._session.unpack(data)
-            if isinstance(self._session, TCXSession):
+            if framed:
+                unpacked = self._session.unpack(data)
                 msg = parse_tcx_message(unpacked)
             else:
-                msg = parse_message(unpacked)
+                msg = parse_message(data)
         except Exception:
             _LOGGER.debug("Failed to parse notification: %s", data.hex(), exc_info=True)
             return
 
+        _LOGGER.debug(
+            "parsed: name=%s raw=%s converted=%s unit=%s",
+            msg.field_name,
+            msg.raw_value,
+            msg.converted_value,
+            msg.unit,
+        )
         self.snapshot.update_from_message(msg)
 
         # Push the update to HA — this triggers entity state writes
         self.async_update_listeners()
-
-        if msg.field_name:
-            _LOGGER.debug("%s = %s %s", msg.field_name, msg.converted_value, msg.unit)
 
     async def _poll_tcu1_fields(self) -> None:
         """Query all TCU1 fields via the request-read GATT pattern."""
@@ -260,16 +281,21 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
                 await asyncio.sleep(0.1)
                 response = await self._client.read_gatt_char(self._char_request_read)
                 msg = parse_message(response)
+                _LOGGER.debug(
+                    "poll response (%02x, %02x) raw: %s",
+                    sender,
+                    channel,
+                    bytes(response).hex(),
+                )
                 if msg.sender == sender and msg.channel == channel:
+                    _LOGGER.debug(
+                        "poll parsed: name=%s raw=%s converted=%s",
+                        msg.field_name,
+                        msg.raw_value,
+                        msg.converted_value,
+                    )
                     self.snapshot.update_from_message(msg)
                     updated = True
-                    if msg.field_name:
-                        _LOGGER.debug(
-                            "poll %s = %s %s",
-                            msg.field_name,
-                            msg.converted_value,
-                            msg.unit,
-                        )
             except Exception:
                 _LOGGER.debug(
                     "Failed to poll field (%02x, %02x)",
