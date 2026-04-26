@@ -40,7 +40,7 @@ from specialized_turbo import (
     parse_tcx_message,
 )
 from specialized_turbo.parameters import BikeParameter
-from specialized_turbo.framing import is_framed_packet, unpack_tcx
+from specialized_turbo.framing import is_framed_packet, strip_clear_prefix, unpack_tcx
 from specialized_turbo.session import TCU1Session, TCXSession, ProtocolSession
 
 _LOGGER = logging.getLogger(__name__)
@@ -317,8 +317,7 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
         for param in _TCX_POLL_PARAMS:
             try:
                 request = build_tcx_request(int(param))
-                packed = self._session.pack(request)
-                await self._client.write_gatt_char(self._char_request_write, packed)
+                await self._client.write_gatt_char(self._char_request_write, request)
                 await asyncio.sleep(0.1)
                 response = await self._client.read_gatt_char(self._char_request_read)
                 unpacked = self._session.unpack(response)
@@ -395,6 +394,8 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
         payload = key_response
         if is_framed_packet(payload):
             payload = unpack_tcx(payload)
+        # Strip f8ff system-response envelope if present
+        payload = strip_clear_prefix(payload)
         # Skip 2-byte param ID
         key_data = payload[2:]
         # Strip trailing zero padding

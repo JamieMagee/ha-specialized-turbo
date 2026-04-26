@@ -514,3 +514,36 @@ async def test_tcu1_notification_with_ff_padding(hass: HomeAssistant) -> None:
 
     assert coord.snapshot.motor.assist_level == AssistLevel.ECO
     assert coord.snapshot.message_count == 1
+
+
+# --- TCX support ---
+
+
+async def test_tcx_notification_with_f8ff_prefix(hass: HomeAssistant) -> None:
+    """Test TCX notification with f8ff system-response envelope parses correctly."""
+    coord = _make_coordinator(hass)
+    coord._generation = BLEProfile.TCX
+
+    # f8ff 016b 05 00... + CRC → SYSTEM_STATE (363) = 5
+    data = bytes.fromhex("f8ff016b050000000000000000000000000048ad")
+    coord._handle_notification(data)
+
+    assert coord.snapshot.system.system_state == 5
+    assert coord.snapshot.message_count == 1
+    coord.async_update_listeners.assert_called_once()
+
+
+async def test_tcx_notification_without_f8ff_prefix(hass: HomeAssistant) -> None:
+    """Test TCX notification without f8ff prefix still parses correctly."""
+    from specialized_turbo.framing import pack_tcx
+
+    coord = _make_coordinator(hass)
+    coord._generation = BLEProfile.TCX
+
+    # param 26 (BATTERY1_STATE_OF_CHARGE) = 0x001a, data = 0x34 (52%)
+    payload = b"\x00\x1a\x34" + b"\x00" * 15
+    data = pack_tcx(payload)
+    coord._handle_notification(data)
+
+    assert coord.snapshot.battery.charge_pct == 52
+    assert coord.snapshot.message_count == 1
