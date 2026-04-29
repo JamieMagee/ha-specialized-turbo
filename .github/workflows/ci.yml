@@ -28,6 +28,7 @@ jobs:
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
           enable-cache: false
+          python-version: 3.14
 
       - name: Check formatting
         run: uvx ruff format --check custom_components/
@@ -52,6 +53,7 @@ jobs:
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
           enable-cache: false
+          python-version: 3.14
 
       - name: Install dependencies
         run: uv sync --group dev
