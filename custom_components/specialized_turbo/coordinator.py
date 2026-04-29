@@ -40,7 +40,7 @@ from specialized_turbo import (
     parse_tcx_message,
 )
 from specialized_turbo.parameters import BikeParameter
-from specialized_turbo.framing import is_framed_packet, strip_clear_prefix, unpack_tcx
+from specialized_turbo.framing import is_framed_packet, unpack_tcx
 from specialized_turbo.session import TCU1Session, TCXSession, ProtocolSession
 
 _LOGGER = logging.getLogger(__name__)
@@ -64,6 +64,13 @@ _TCX_POLL_PARAMS: tuple[BikeParameter, ...] = (
     BikeParameter.MOTOR_RIDER_INPUT_POWER,
     BikeParameter.MOTOR_TEMPERATURE,
 )
+
+
+def _strip_clear_prefix(data: bytes) -> bytes:
+    """Strip f8ff system-response envelope if present."""
+    if len(data) >= 2 and data[0:2] == b"\xf8\xff":
+        return data[2:]
+    return data
 
 
 class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
@@ -395,7 +402,7 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
         if is_framed_packet(payload):
             payload = unpack_tcx(payload)
         # Strip f8ff system-response envelope if present
-        payload = strip_clear_prefix(payload)
+        payload = _strip_clear_prefix(payload)
         # Skip 2-byte param ID
         key_data = payload[2:]
         # Strip trailing zero padding
