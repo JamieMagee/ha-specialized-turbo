@@ -519,22 +519,31 @@ async def test_tcu1_notification_with_ff_padding(hass: HomeAssistant) -> None:
 # --- TCX support ---
 
 
-async def test_tcx_notification_with_f8ff_prefix(hass: HomeAssistant) -> None:
-    """Test TCX notification with f8ff system-response envelope parses correctly."""
+async def test_tcx_notification_with_f8ff_is_nak(hass: HomeAssistant) -> None:
+    """F8 FF notifications are NAK rejections, not telemetry envelopes.
+
+    The bytes after F8 FF echo the requested parameter ID and a rejection
+    reason code.  Before specialized-turbo v0.5.0 the coordinator stripped
+    the prefix and parsed the reason byte as data (e.g. SoC=5%).  Now it
+    should be recognised as a NAK and skipped — no state update.
+    """
     coord = _make_coordinator(hass)
     coord._generation = BLEProfile.TCX
 
-    # f8ff 016b 05 00... + CRC → SYSTEM_STATE (363) = 5
+    # f8ff 016b 05 00... + CRC.  Looks like SYSTEM_STATE (363) = 5 if you
+    # blindly strip the f8ff, but it's actually a rejection of param 363
+    # with reason code 0x05.
     data = bytes.fromhex("f8ff016b050000000000000000000000000048ad")
     coord._handle_notification(data)
 
-    assert coord.snapshot.system.system_state == 5
+    assert coord.snapshot.system.system_state is None
+    # message_count still increments — NAKs are still "messages received".
     assert coord.snapshot.message_count == 1
     coord.async_update_listeners.assert_called_once()
 
 
-async def test_tcx_notification_without_f8ff_prefix(hass: HomeAssistant) -> None:
-    """Test TCX notification without f8ff prefix still parses correctly."""
+async def test_tcx_notification_battery_charge(hass: HomeAssistant) -> None:
+    """A normal (non-NAK) TCX notification updates the snapshot."""
     from specialized_turbo.framing import pack_tcx
 
     coord = _make_coordinator(hass)

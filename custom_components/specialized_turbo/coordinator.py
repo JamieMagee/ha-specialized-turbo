@@ -40,7 +40,12 @@ from specialized_turbo import (
     parse_tcx_message,
 )
 from specialized_turbo.parameters import BikeParameter
-from specialized_turbo.framing import is_framed_packet, strip_clear_prefix, unpack_tcx
+from specialized_turbo.framing import (
+    is_framed_packet,
+    is_nak_packet,
+    parse_nak_packet,
+    unpack_tcx,
+)
 from specialized_turbo.session import TCU1Session, TCXSession, ProtocolSession
 
 _LOGGER = logging.getLogger(__name__)
@@ -390,12 +395,21 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
 
         # Extract the base64 key string from the response payload.
         # The response may be CRC-framed (20 bytes) or raw.
-        # Strip 2-byte param ID prefix; the rest is the key material.
         payload = key_response
         if is_framed_packet(payload):
             payload = unpack_tcx(payload)
-        # Strip f8ff system-response envelope if present
-        payload = strip_clear_prefix(payload)
+        # F8 FF means the bike rejected the key request (NAK).  Fall back
+        # to the unencrypted session rather than feeding the rejection
+        # reason byte into key derivation.
+        if is_nak_packet(payload):
+            param_id, reason = parse_nak_packet(payload)
+            _LOGGER.info(
+                "Bike rejected encryption key request (param %d, reason 0x%02x); "
+                "using unencrypted session",
+                param_id,
+                reason,
+            )
+            return
         # Skip 2-byte param ID
         key_data = payload[2:]
         # Strip trailing zero padding
