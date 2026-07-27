@@ -4,11 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
+import voluptuous as vol
 from bleak import BleakClient
 from bleak.exc import BleakError
 from bleak_retry_connector import establish_connection
-import voluptuous as vol
-
 from homeassistant.components.bluetooth import (
     BluetoothServiceInfoBleak,
     async_ble_device_from_address,
@@ -18,8 +17,9 @@ from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
 from homeassistant.const import CONF_ADDRESS
 from homeassistant.helpers.device_registry import format_mac
 
-from .const import CONF_PIN, DOMAIN
 from specialized_turbo import is_specialized_advertisement
+
+from .const import CONF_PIN, DOMAIN
 
 
 class SpecializedTurboConfigFlow(ConfigFlow, domain=DOMAIN):

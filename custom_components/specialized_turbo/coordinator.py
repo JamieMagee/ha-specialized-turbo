@@ -17,7 +17,6 @@ import time
 from bleak import BleakClient, BleakError
 from bleak.backends.characteristic import BleakGATTCharacteristic
 from bleak_retry_connector import establish_connection
-
 from homeassistant.components import bluetooth
 from homeassistant.components.bluetooth.active_update_coordinator import (
     ActiveBluetoothDataUpdateCoordinator,
@@ -39,14 +38,14 @@ from specialized_turbo import (
     parse_message,
     parse_tcx_message,
 )
-from specialized_turbo.parameters import BikeParameter
 from specialized_turbo.framing import (
     is_framed_packet,
     is_nak_packet,
     parse_nak_packet,
     unpack_tcx,
 )
-from specialized_turbo.session import TCU1Session, TCXSession, ProtocolSession
+from specialized_turbo.parameters import BikeParameter
+from specialized_turbo.session import ProtocolSession, TCU1Session, TCXSession
 
 _LOGGER = logging.getLogger(__name__)
 

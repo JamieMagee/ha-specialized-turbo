@@ -13,9 +13,9 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.const import (
     CONF_ADDRESS,
-    EntityCategory,
     PERCENTAGE,
     REVOLUTIONS_PER_MINUTE,
+    EntityCategory,
     UnitOfElectricCurrent,
     UnitOfElectricPotential,
     UnitOfEnergy,
@@ -31,13 +31,13 @@ from homeassistant.helpers.device_registry import (
     format_mac,
 )
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.typing import StateType
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+
+from specialized_turbo import AssistLevel, TelemetrySnapshot
 
 from . import SpecializedTurboConfigEntry
 from .coordinator import SpecializedTurboCoordinator
-from homeassistant.helpers.typing import StateType
-
-from specialized_turbo import AssistLevel, TelemetrySnapshot
 
 PARALLEL_UPDATES = 0
 
