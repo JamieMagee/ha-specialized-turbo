@@ -9,8 +9,8 @@ from homeassistant.const import CONF_ADDRESS, Platform
 from homeassistant.core import HomeAssistant
 
 from specialized_turbo import (
-    BLEProfile,
     BikeAdvertisement,
+    BLEProfile,
     ProtocolEncryptionMethod,
 )
 

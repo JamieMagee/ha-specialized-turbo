@@ -18,12 +18,12 @@ from homeassistant.core import HomeAssistant, callback
 
 from specialized_turbo import (
     CHAR_NOTIFY,
+    TCU1_POLL_FIELDS,
     BikeAdvertisement,
     BLEProfile,
     EncryptionKeyRequiredError,
     ProtocolEncryptionMethod,
     StaticKeyProvider,
-    TCU1_POLL_FIELDS,
     TCXNotificationTransport,
     TelemetrySnapshot,
     build_request,

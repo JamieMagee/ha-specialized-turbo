@@ -18,8 +18,8 @@ from homeassistant.const import CONF_ADDRESS, CONF_EMAIL, CONF_PASSWORD
 from homeassistant.helpers.device_registry import format_mac
 
 from specialized_turbo import (
-    BLEProfile,
     BikeAdvertisement,
+    BLEProfile,
     EncryptionKeyRequiredError,
     ProtocolEncryptionMethod,
     SpecializedConnection,
