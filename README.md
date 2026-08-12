@@ -61,7 +61,15 @@ Copy the `custom_components/specialized_turbo` folder to your `config/custom_com
 1. Turn on your bike
 2. It should appear in Settings > Devices & Services
 3. Enter the pairing PIN from the bike's TCU screen (if prompted)
-4. Sensors show up after the first BLE notification arrives
+4. For a newer encrypted bike, choose either:
+   - sign in to your Specialized account so Home Assistant can retrieve the
+     bike's wrapped key; or
+   - enter the 64-character wrapped key manually.
+5. Sensors show up after the encrypted identification handshake completes
+
+Account passwords and cloud tokens are not stored. The integration persists
+only the per-bike wrapped key and HMI identifiers. Diagnostics redact the PIN,
+wrapped key, and HMI identifiers.
 
 If auto-discovery doesn't work, add it manually: Settings > Devices & Services > Add Integration > Specialized Turbo.
 
@@ -85,7 +93,11 @@ The coordinator reconnects automatically if the BLE connection drops.
 - Only one BLE client at a time. If Mission Control is connected, HA can't connect.
 - Read-only -- the integration reads telemetry but cannot change settings or assist levels.
 - When the bike sleeps, BLE stops and the connection is lost. Data resumes when it wakes.
-- Some newer bikes encrypt their BLE communication. The integration tries to negotiate encryption keys, but this hasn't been verified on all models. Falls back to unencrypted if negotiation fails.
+- Newer bikes require internet access once during setup to retrieve their
+  wrapped key, unless it is entered manually.
+- Bikes that advertise AES encryption fail clearly and start reauthentication
+  if their key is missing or invalid; they do not silently fall back to
+  unencrypted traffic.
 
 ## Troubleshooting
 

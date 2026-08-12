@@ -9,9 +9,19 @@ from homeassistant.components.diagnostics import async_redact_data
 from homeassistant.core import HomeAssistant
 
 from . import SpecializedTurboConfigEntry
-from .const import CONF_PIN
+from .const import (
+    CONF_HMI_HARDWARE,
+    CONF_HMI_SERIAL,
+    CONF_PIN,
+    CONF_WRAPPED_KEY,
+)
 
-TO_REDACT = {CONF_PIN}
+TO_REDACT = {
+    CONF_PIN,
+    CONF_WRAPPED_KEY,
+    CONF_HMI_HARDWARE,
+    CONF_HMI_SERIAL,
+}
 
 
 async def async_get_config_entry_diagnostics(

@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import sys
 from unittest.mock import MagicMock
 
 import pytest
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from specialized_turbo import PRODUCTION_WRAPPING_KEY
 
 # Windows requires SelectorEventLoop for compatibility with pytest-homeassistant
 if sys.platform == "win32":
@@ -32,6 +35,9 @@ MOCK_ADDRESS = "DC:DD:BB:4A:D6:55"
 MOCK_ADDRESS_FORMATTED = "dc:dd:bb:4a:d6:55"
 MOCK_NAME = "SPECIALIZED"
 MOCK_MANUFACTURER_DATA: dict[int, bytes] = {0x0059: b"TURBOHMItest1234"}
+MOCK_ENCRYPTED_MANUFACTURER_DATA: dict[int, bytes] = {
+    0x0059: (123456789).to_bytes(4, "little") + bytes([3, 2, 1, 0, 9, 4])
+}
 
 # TCU1 (2018 Levo) test data
 MOCK_GEN1_ADDRESS = "C6:1A:10:12:5E:48"
@@ -72,3 +78,17 @@ def make_tcu1_service_info(
         else MOCK_GEN1_MANUFACTURER_DATA
     )
     return info
+
+
+def make_wrapped_key(
+    key: bytes = bytes.fromhex("00112233445566778899aabbccddeeff"),
+) -> str:
+    """Build a valid wrapped key for config-flow tests."""
+    wrapping_iv = bytes(range(16))
+    cipher = Cipher(
+        algorithms.AES(PRODUCTION_WRAPPING_KEY),
+        modes.CTR(wrapping_iv),
+    )
+    encryptor = cipher.encryptor()
+    encrypted = encryptor.update(key.hex().encode()) + encryptor.finalize()
+    return base64.b64encode(wrapping_iv + encrypted).decode()

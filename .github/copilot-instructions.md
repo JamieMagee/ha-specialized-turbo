@@ -11,7 +11,10 @@ Data flows one direction: BLE notification -> protocol parser -> coordinator sna
 - **`specialized-turbo` (PyPI)** -- BLE protocol definitions (UUIDs, enums, `parse_message()`), data models (`TelemetrySnapshot`), advertisement matching (`is_specialized_advertisement()`), CRC-16 framing, AES-128-CTR encryption, and `BikeParameter` enum for TCX2+ bikes.
 - **`coordinator.py`** -- `ActiveBluetoothDataUpdateCoordinator` subclass. Manages BLE connection, subscribes to GATT `CHAR_NOTIFY`, calls `parse_message()` on notifications, updates `self.snapshot`. TCU1 bikes get periodic request-read polling via `_poll_tcu1_fields()`. Pushes to HA via `async_set_updated_data(None)` -- entities read from `coordinator.snapshot` directly.
 - **`sensor.py`** -- `SENSOR_DESCRIPTIONS` tuple of `SpecializedSensorEntityDescription` (frozen dataclass with `value_fn` lambda). Each sensor reads from snapshot. Available only after `snapshot.message_count > 0`.
-- **`config_flow.py`** -- Two entry points: `async_step_bluetooth` (auto-discovery) and `async_step_user` (manual). Both collect an optional pairing PIN. Discovery uses `is_specialized_advertisement()`.
+- **`config_flow.py`** -- Bluetooth/manual setup, encrypted-bike account or
+  wrapped-key setup, reauthentication, and PIN reconfiguration. Passwords and
+  cloud tokens are transient; config entries store only the per-bike wrapped
+  key and HMI identifiers.
 - **`__init__.py`** -- Stores coordinator in `entry.runtime_data`.
 
 ## Key types from specialized-turbo
@@ -29,8 +32,10 @@ Data flows one direction: BLE notification -> protocol parser -> coordinator sna
 - Sensor descriptions use frozen dataclasses with `kw_only=True` and `value_fn: Callable[[TelemetrySnapshot], Any]`.
 - Disabled-by-default sensors: `entity_registry_enabled_default=False`.
 - `strings.json` and `translations/en.json` must stay in sync.
-- Discovery matching in `manifest.json` uses `manufacturer_id: 89` (Nordic) with `TURBOHMI` ASCII bytes.
-- PIN is stored as `int | None` in config entries (the coordinator handles pairing directly via bleak, not through `SpecializedConnection`).
+- Discovery matching in `manifest.json` covers legacy `TURBOHMI`, modern
+  10-byte Nordic advertisements through Specialized service UUIDs, and TCU1.
+- PIN is stored as `str | None` in config entries to preserve leading zeroes.
+- Wrapped keys, HMI identifiers, and PINs must be redacted from diagnostics.
 
 ## Adding a new sensor
 

@@ -7,21 +7,54 @@
         "description": "Select your Specialized Turbo bike from the discovered devices.",
         "data": {
           "address": "Bike",
-          "pin": "Pairing PIN"
+          "pin": "Pairing PIN",
+          "key_source": "Encryption key source"
         },
         "data_description": {
           "address": "Select the Specialized Turbo bike you want to add.",
-          "pin": "The PIN displayed on the bike's TCU screen during Bluetooth pairing. Leave empty if your bike does not require a PIN."
+          "pin": "The PIN displayed on the bike's TCU screen during Bluetooth pairing. Leave empty if your bike does not require a PIN.",
+          "key_source": "Use your Specialized account to retrieve the bike key automatically, or enter a wrapped key manually."
         }
       },
       "bluetooth_confirm": {
         "title": "Discovered Specialized Turbo Bike",
         "description": "A Specialized Turbo bike was found at {address} ({name}). Enter the pairing PIN shown on the bike's TCU display to connect.",
         "data": {
-          "pin": "Pairing PIN"
+          "pin": "Pairing PIN",
+          "key_source": "Encryption key source"
         },
         "data_description": {
-          "pin": "The PIN displayed on the bike's TCU screen during Bluetooth pairing. Leave empty if your bike does not require a PIN."
+          "pin": "The PIN displayed on the bike's TCU screen during Bluetooth pairing. Leave empty if your bike does not require a PIN.",
+          "key_source": "Use your Specialized account to retrieve the bike key automatically, or enter a wrapped key manually."
+        }
+      },
+      "account": {
+        "title": "Sign in to Specialized",
+        "description": "Your password is used only to retrieve this bike's encryption key. Home Assistant stores the per-bike wrapped key, not your password or account tokens.",
+        "data": {
+          "email": "Email",
+          "password": "Password"
+        }
+      },
+      "key_source": {
+        "title": "Choose encryption key source",
+        "description": "Use your Specialized account to retrieve the bike key automatically, or enter a wrapped key manually.",
+        "data": {
+          "key_source": "Encryption key source"
+        }
+      },
+      "manual_key": {
+        "title": "Enter wrapped bike key",
+        "description": "Enter the 64-character wrapped key returned by the Specialized keystore service.",
+        "data": {
+          "wrapped_key": "Wrapped key"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Encryption key required",
+        "description": "This bike requires an encryption key. Choose how to retrieve it.",
+        "data": {
+          "key_source": "Encryption key source"
         }
       },
       "reconfigure": {
@@ -36,7 +69,10 @@
       }
     },
     "error": {
-      "cannot_connect": "Could not connect to the bike. Make sure it is powered on and in Bluetooth range."
+      "cannot_connect": "Could not complete the bike connection. Make sure it is powered on, nearby, and paired.",
+      "invalid_auth": "The Specialized account credentials were rejected.",
+      "key_unavailable": "The Specialized encryption key could not be retrieved.",
+      "invalid_wrapped_key": "The wrapped key is invalid."
     },
     "abort": {
       "already_configured": "This bike is already configured.",

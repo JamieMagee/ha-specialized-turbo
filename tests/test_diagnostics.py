@@ -8,7 +8,13 @@ from homeassistant.const import CONF_ADDRESS
 from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.specialized_turbo.const import CONF_PIN, DOMAIN
+from custom_components.specialized_turbo.const import (
+    CONF_HMI_HARDWARE,
+    CONF_HMI_SERIAL,
+    CONF_PIN,
+    CONF_WRAPPED_KEY,
+    DOMAIN,
+)
 from custom_components.specialized_turbo.diagnostics import (
     async_get_config_entry_diagnostics,
 )
@@ -47,11 +53,17 @@ async def test_diagnostics_structure(hass: HomeAssistant) -> None:
     assert result["snapshot"]["settings"]["assist_lev1_pct"] == 30
 
 
-async def test_diagnostics_redacts_pin(hass: HomeAssistant) -> None:
-    """Test that PIN is redacted in diagnostics output."""
+async def test_diagnostics_redacts_encryption_data(hass: HomeAssistant) -> None:
+    """Test that pairing and encryption material is redacted."""
     entry = MockConfigEntry(
         domain=DOMAIN,
-        data={CONF_ADDRESS: MOCK_ADDRESS, CONF_PIN: 1234},
+        data={
+            CONF_ADDRESS: MOCK_ADDRESS,
+            CONF_PIN: "012345",
+            CONF_WRAPPED_KEY: "secret-key",
+            CONF_HMI_HARDWARE: "3.2.1",
+            CONF_HMI_SERIAL: "123456789",
+        },
         unique_id=MOCK_ADDRESS_FORMATTED,
     )
     entry.add_to_hass(hass)
@@ -63,6 +75,9 @@ async def test_diagnostics_redacts_pin(hass: HomeAssistant) -> None:
     result = await async_get_config_entry_diagnostics(hass, entry)
 
     assert result["entry"]["data"][CONF_PIN] == "**REDACTED**"
+    assert result["entry"]["data"][CONF_WRAPPED_KEY] == "**REDACTED**"
+    assert result["entry"]["data"][CONF_HMI_HARDWARE] == "**REDACTED**"
+    assert result["entry"]["data"][CONF_HMI_SERIAL] == "**REDACTED**"
     assert result["entry"]["data"][CONF_ADDRESS] == MOCK_ADDRESS
 
 

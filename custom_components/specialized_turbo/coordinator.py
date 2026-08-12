@@ -1,18 +1,11 @@
-"""BLE coordinator for Specialized Turbo bikes.
-
-Connects over BLE, subscribes to GATT notifications, parses incoming
-telemetry, and pushes updates to HA entities.
-
-TCU1 bikes only push a handful of fields via notifications. The
-coordinator uses the request-read GATT pattern to poll the remaining
-fields periodically.
-"""
+"""BLE coordinator for Specialized Turbo bikes."""
 
 from __future__ import annotations
 
 import asyncio
 import logging
 import time
+from collections.abc import Callable
 
 from bleak import BleakClient, BleakError
 from bleak.backends.characteristic import BleakGATTCharacteristic
@@ -25,53 +18,35 @@ from homeassistant.core import HomeAssistant, callback
 
 from specialized_turbo import (
     CHAR_NOTIFY,
-    TCU1_POLL_FIELDS,
+    BikeAdvertisement,
     BLEProfile,
+    EncryptionKeyRequiredError,
+    ProtocolEncryptionMethod,
+    StaticKeyProvider,
+    TCU1_POLL_FIELDS,
+    TCXNotificationTransport,
     TelemetrySnapshot,
     build_request,
-    build_tcx_request,
-    derive_key,
-    detect_generation,
     get_char_notify,
     get_char_request_read,
     get_char_request_write,
+    identify_tcx,
+    parse_bike_advertisement,
     parse_message,
     parse_tcx_message,
+    poll_tcx,
+    resolve_bike_key,
 )
-from specialized_turbo.framing import (
-    is_framed_packet,
-    is_nak_packet,
-    parse_nak_packet,
-    unpack_tcx,
-)
-from specialized_turbo.parameters import BikeParameter
+from specialized_turbo.framing import is_framed_packet
 from specialized_turbo.session import ProtocolSession, TCU1Session, TCXSession
 
 _LOGGER = logging.getLogger(__name__)
 
-# How often to re-poll TCU1 fields (seconds)
 _TCU1_POLL_INTERVAL = 60
-
-_TCX_POLL_PARAMS: tuple[BikeParameter, ...] = (
-    BikeParameter.SYSTEM_STATE,
-    BikeParameter.SYSTEM_RANGE_LONG,
-    BikeParameter.SYSTEM_RANGE_SHORT,
-    BikeParameter.SYSTEM_TEMPERATURE,
-    BikeParameter.SYSTEM_CONSUMPTION,
-    BikeParameter.SYSTEM_ALT,
-    BikeParameter.SYSTEM_ALT_GAIN,
-    BikeParameter.SYSTEM_GRADIENT,
-    BikeParameter.BATTERY1_STATE_OF_CHARGE,
-    BikeParameter.MOTOR_BIKE_SPEED,
-    BikeParameter.MOTOR_BIKE_CADENCE,
-    BikeParameter.MOTOR_POWER,
-    BikeParameter.MOTOR_RIDER_INPUT_POWER,
-    BikeParameter.MOTOR_TEMPERATURE,
-)
 
 
 class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
-    """Manages the BLE connection and notification subscription for one bike."""
+    """Manage the BLE connection and notifications for one bike."""
 
     def __init__(
         self,
@@ -79,9 +54,11 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
         logger: logging.Logger,
         *,
         address: str,
-        pin: int | None = None,
+        pin: str | None = None,
+        wrapped_key: str | None = None,
+        advertisement: BikeAdvertisement | None = None,
+        reauth_callback: Callable[[BikeAdvertisement], None] | None = None,
     ) -> None:
-        """Initialize the coordinator."""
         super().__init__(
             hass=hass,
             logger=logger,
@@ -93,16 +70,19 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
         )
         self._address = address
         self._pin = pin
+        self._wrapped_key = wrapped_key
+        self._advertisement = advertisement
+        self._reauth_callback = reauth_callback
+        self._reauth_requested = False
         self.snapshot = TelemetrySnapshot()
         self._client: BleakClient | None = None
         self._was_unavailable = False
         self._generation: BLEProfile | None = None
         self._session: ProtocolSession = TCU1Session()
+        self._tcx_transport: TCXNotificationTransport | None = None
         self._char_request_write: str | None = None
         self._char_request_read: str | None = None
         self._last_poll_time: float = 0
-        # True once we've seen a CRC-framed (TCX) notification.
-        # Some bikes advertise TCX UUIDs but send TCU1-format messages.
         self._uses_tcx_messages: bool | None = None
 
     @callback
@@ -111,16 +91,18 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
         service_info: bluetooth.BluetoothServiceInfoBleak,
         seconds_since_last_update: float | None,
     ) -> bool:
-        """True if we need to (re)connect or re-poll TCU1 fields."""
-        # Detect generation early from advertisement data
-        if self._generation is None:
-            gen = detect_generation(service_info.manufacturer_data)
-            if gen is not None:
-                self._generation = gen
+        """Return whether the coordinator needs to connect or poll."""
+        del seconds_since_last_update
+        if self._advertisement is None:
+            self._advertisement = parse_bike_advertisement(
+                service_info.manufacturer_data,
+                local_name=service_info.name,
+                service_uuids=service_info.service_uuids,
+            )
+        if self._advertisement is not None:
+            self._generation = self._advertisement.generation
         if self._client is None or not self._client.is_connected:
             return True
-        # Periodically re-poll fields via request-read.  Skip until the
-        # first poll interval has elapsed after connection.
         if self._last_poll_time == 0:
             return False
         return (time.monotonic() - self._last_poll_time) >= _TCU1_POLL_INTERVAL
@@ -129,19 +111,13 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
         self,
         service_info: bluetooth.BluetoothServiceInfoBleak | None = None,
     ) -> None:
-        """Connect to the bike and subscribe to notifications."""
+        """Connect to the bike and poll fields that are not pushed."""
         try:
             await self._ensure_connected(service_info)
         except BleakError:
             self._client = None
             raise
 
-        # Poll fields via request-read.  Use the message format detected
-        # from notifications rather than the BLE profile, since some bikes
-        # advertise TCX UUIDs but send TCU1-format messages.
-        # Default to TCU1 polling until the first notification reveals the
-        # actual format — TCU1 polls are harmless on TCX bikes (they just
-        # return no data), while TCX polls on a TCU1 bike produce garbage.
         if self._client and self._client.is_connected:
             if self._uses_tcx_messages is True:
                 await self._poll_tcx_fields()
@@ -152,11 +128,22 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
         self,
         service_info: bluetooth.BluetoothServiceInfoBleak | None = None,
     ) -> None:
-        """Establish BLE connection and subscribe to notifications."""
+        """Establish the BLE connection and notification subscriptions."""
         if self._client and self._client.is_connected:
             return
 
         _LOGGER.debug("Connecting to Specialized Turbo at %s", self._address)
+
+        if service_info is not None and self._advertisement is None:
+            self._advertisement = parse_bike_advertisement(
+                service_info.manufacturer_data,
+                local_name=service_info.name,
+                service_uuids=service_info.service_uuids,
+            )
+        if self._advertisement is not None:
+            self._generation = self._advertisement.generation
+
+        bike_key = await self._resolve_bike_key()
 
         ble_device = (
             service_info.device
@@ -184,51 +171,99 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
             _LOGGER.info("Specialized Turbo at %s is available again", self._address)
             self._was_unavailable = False
 
-        char_notify = (
-            get_char_notify(self._generation)
-            if self._generation is not None
-            else CHAR_NOTIFY
-        )
-
-        # Resolve request-read UUIDs for TCU1 polling
         if self._generation is not None:
             self._char_request_write = get_char_request_write(self._generation)
             self._char_request_read = get_char_request_read(self._generation)
 
-        # Create protocol session based on generation
         if self._generation == BLEProfile.TCX:
-            self._session = TCXSession()  # unencrypted default
-            _LOGGER.debug("Using TCX session (unencrypted default)")
+            self._session = TCXSession()
         else:
             self._session = TCU1Session()
 
-        # Trigger pairing if PIN is provided
         if self._pin is not None:
             try:
                 await client.pair(protection_level=2)
-                _LOGGER.info("Paired with PIN")
+                _LOGGER.info("Paired with bike")
             except NotImplementedError:
                 _LOGGER.debug("Backend does not support programmatic pairing")
             except Exception:
                 _LOGGER.warning("Pairing failed", exc_info=True)
 
-        # Run identification handshake for TCX bikes (after pairing, before subscribe)
         if self._generation == BLEProfile.TCX:
-            await self._identify_tcx()
-
-        # Subscribe to telemetry notifications
-        await client.start_notify(char_notify, self._notification_handler)
+            transport = TCXNotificationTransport(client, session=TCXSession())
+            self._tcx_transport = transport
+            await transport.subscribe_for_identification()
+            encryption_required = (
+                self._advertisement is not None
+                and self._advertisement.encryption == ProtocolEncryptionMethod.AES_CTR
+            )
+            self._session = await identify_tcx(
+                transport,
+                bike_key=bike_key,
+                encryption_required=encryption_required,
+            )
+            transport.session = self._session
+            transport.add_listener(self._notification_handler)
+            await transport.subscribe_for_realtime()
+            await transport.set_realtime_enabled(True)
+            self._uses_tcx_messages = True
+        else:
+            char_notify = (
+                get_char_notify(self._generation)
+                if self._generation is not None
+                else CHAR_NOTIFY
+            )
+            await client.start_notify(char_notify, self._notification_handler)
         _LOGGER.info("Subscribed to telemetry notifications")
 
+    async def _resolve_bike_key(self) -> bytes | None:
+        advertisement = self._advertisement
+        if (
+            advertisement is None
+            or advertisement.encryption != ProtocolEncryptionMethod.AES_CTR
+        ):
+            return None
+        if (
+            self._wrapped_key is None
+            or advertisement.hmi_hardware is None
+            or advertisement.hmi_serial is None
+        ):
+            self._request_reauth()
+            raise EncryptionKeyRequiredError(
+                "Encrypted bike requires a wrapped key and HMI identifiers"
+            )
+        try:
+            return await resolve_bike_key(
+                StaticKeyProvider(self._wrapped_key),
+                hmi_hardware=advertisement.hmi_hardware,
+                hmi_serial=advertisement.hmi_serial,
+            )
+        except Exception:
+            self._request_reauth()
+            raise
+
+    def _request_reauth(self) -> None:
+        if (
+            self._reauth_requested
+            or self._reauth_callback is None
+            or self._advertisement is None
+        ):
+            return
+        self._reauth_requested = True
+        self._reauth_callback(self._advertisement)
+
     def _notification_handler(
-        self, sender: BleakGATTCharacteristic | int, data: bytearray
+        self,
+        sender: BleakGATTCharacteristic | int,
+        data: bytearray,
     ) -> None:
-        """Handle a BLE notification (called from Bleak's BLE thread)."""
+        """Forward a BLE notification to the Home Assistant event loop."""
+        del sender
         self.hass.loop.call_soon_threadsafe(self._handle_notification, bytes(data))
 
     @callback
     def _handle_notification(self, data: bytes) -> None:
-        """Parse a BLE notification and push the update to HA."""
+        """Parse a notification and update the snapshot."""
         _LOGGER.debug(
             "notify raw (%d bytes, gen=%s, session=%s): %s",
             len(data),
@@ -237,11 +272,11 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
             data.hex(),
         )
 
-        # Auto-detect message format from the data itself.
-        # CRC-framed 20-byte packets → TCX parameter ID format.
-        # Anything else (e.g. 0xFF-padded) → TCU1 sender/channel format.
-        # Some bikes advertise TCX UUIDs but send TCU1-format messages.
-        framed = is_framed_packet(data)
+        framed = self._generation == BLEProfile.TCX and (
+            isinstance(self._session, TCXSession)
+            and self._session.encrypted
+            or is_framed_packet(data)
+        )
         if self._uses_tcx_messages is None:
             self._uses_tcx_messages = framed
             _LOGGER.info(
@@ -259,20 +294,11 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
             _LOGGER.debug("Failed to parse notification: %s", data.hex(), exc_info=True)
             return
 
-        _LOGGER.debug(
-            "parsed: name=%s raw=%s converted=%s unit=%s",
-            msg.field_name,
-            msg.raw_value,
-            msg.converted_value,
-            msg.unit,
-        )
         self.snapshot.update_from_message(msg)
-
-        # Push the update to HA — this triggers entity state writes
         self.async_update_listeners()
 
     async def _poll_tcu1_fields(self) -> None:
-        """Query all TCU1 fields via the request-read GATT pattern."""
+        """Query TCU1 fields with the request-read GATT pattern."""
         if self._client is None or self._char_request_write is None:
             return
 
@@ -285,19 +311,7 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
                 await asyncio.sleep(0.1)
                 response = await self._client.read_gatt_char(self._char_request_read)
                 msg = parse_message(response)
-                _LOGGER.debug(
-                    "poll response (%02x, %02x) raw: %s",
-                    sender,
-                    channel,
-                    bytes(response).hex(),
-                )
                 if msg.sender == sender and msg.channel == channel:
-                    _LOGGER.debug(
-                        "poll parsed: name=%s raw=%s converted=%s",
-                        msg.field_name,
-                        msg.raw_value,
-                        msg.converted_value,
-                    )
                     self.snapshot.update_from_message(msg)
                     updated = True
             except Exception:
@@ -313,156 +327,60 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
             self.async_update_listeners()
 
     async def _poll_tcx_fields(self) -> None:
-        """Query TCX system fields via the request-read pattern."""
-        if self._client is None or self._char_request_write is None:
+        """Query TCX fields through the upstream notification transport."""
+        if self._tcx_transport is None:
             return
 
-        updated = False
-        for param in _TCX_POLL_PARAMS:
-            try:
-                request = build_tcx_request(int(param))
-                await self._client.write_gatt_char(self._char_request_write, request)
-                await asyncio.sleep(0.1)
-                response = await self._client.read_gatt_char(self._char_request_read)
-                unpacked = self._session.unpack(response)
-                msg = parse_tcx_message(unpacked)
-                self.snapshot.update_from_message(msg)
-                updated = True
-                if msg.field_name:
-                    _LOGGER.debug(
-                        "tcx poll %s = %s %s",
-                        msg.field_name,
-                        msg.converted_value,
-                        msg.unit,
-                    )
-            except Exception:
-                _LOGGER.debug(
-                    "Failed to poll TCX param %d",
-                    int(param),
-                    exc_info=True,
-                )
-
+        updated = await poll_tcx(self._tcx_transport, self.snapshot)
         self._last_poll_time = time.monotonic()
         if updated:
             self.async_update_listeners()
 
-    async def _identify_tcx(self) -> None:
-        """Run the TCX identification handshake to exchange encryption keys.
-
-        Executes a short 3-step request-read sequence. Step 3 returns the
-        encryption key material.  On success, replaces self._session with
-        an encrypted TCXSession.  On failure, keeps the unencrypted session.
-        """
-        if self._client is None or self._char_request_write is None:
-            return
-
-        _LOGGER.debug("Starting TCX identification handshake")
-
-        # Identification steps: SYSTEM_GET_NEW_VI, SYSTEM_STATE, BATTERY1_FIRMWARE
-        steps = [
-            BikeParameter.SYSTEM_GET_NEW_VI,  # 300
-            BikeParameter.SYSTEM_STATE,  # 363
-            BikeParameter.BATTERY1_FIRMWARE,  # 14 — encryption key exchange
-        ]
-
-        key_response: bytes | None = None
-
-        try:
-            for param in steps:
-                request = build_tcx_request(int(param))
-                await self._client.write_gatt_char(self._char_request_write, request)
-                await asyncio.sleep(0.15)
-                response = await self._client.read_gatt_char(self._char_request_read)
-                _LOGGER.debug(
-                    "Identification step %d: %d bytes: %s",
-                    int(param),
-                    len(response),
-                    bytes(response).hex(),
-                )
-                if param == BikeParameter.BATTERY1_FIRMWARE:
-                    key_response = bytes(response)
-        except Exception:
-            _LOGGER.warning(
-                "TCX identification handshake failed, using unencrypted session",
-                exc_info=True,
-            )
-            return
-
-        if key_response is None or len(key_response) < 4:
-            _LOGGER.debug("No encryption key in identification response")
-            return
-
-        # Extract the base64 key string from the response payload.
-        # The response may be CRC-framed (20 bytes) or raw.
-        payload = key_response
-        if is_framed_packet(payload):
-            payload = unpack_tcx(payload)
-        # F8 FF means the bike rejected the key request (NAK).  Fall back
-        # to the unencrypted session rather than feeding the rejection
-        # reason byte into key derivation.
-        if is_nak_packet(payload):
-            param_id, reason = parse_nak_packet(payload)
-            _LOGGER.info(
-                "Bike rejected encryption key request (param %d, reason 0x%02x); "
-                "using unencrypted session",
-                param_id,
-                reason,
-            )
-            return
-        # Skip 2-byte param ID
-        key_data = payload[2:]
-        # Strip trailing zero padding
-        key_data = key_data.rstrip(b"\x00")
-
-        if len(key_data) == 0:
-            _LOGGER.debug(
-                "Encryption key response was empty — bike may not require encryption"
-            )
-            return
-
-        try:
-            key_str = key_data.decode("ascii")
-            aes_key = derive_key(key_str)
-            self._session = TCXSession(key=aes_key, iv=b"\x00" * 16)
-            _LOGGER.info("TCX encryption key derived, using encrypted session")
-        except Exception:
-            _LOGGER.warning(
-                "Failed to derive encryption key, using unencrypted session",
-                exc_info=True,
-            )
-
     @property
     def connected(self) -> bool:
-        """Return True if the BLE client is connected."""
+        """Return whether the BLE client is connected."""
         return self._client is not None and self._client.is_connected
 
     def _on_disconnect(self, client: BleakClient) -> None:
-        """Handle unexpected disconnection (called from Bleak's BLE thread)."""
+        """Handle an unexpected BLE disconnection."""
+        del client
         self.hass.loop.call_soon_threadsafe(self._handle_disconnect)
 
     @callback
     def _handle_disconnect(self) -> None:
-        """Process disconnection on the HA event loop."""
+        """Process disconnection on the Home Assistant event loop."""
         if not self._was_unavailable:
             _LOGGER.info("Disconnected from Specialized Turbo at %s", self._address)
             self._was_unavailable = True
         self._client = None
+        self._tcx_transport = None
         self.async_update_listeners()
 
     async def async_shutdown(self) -> None:
-        """Clean up BLE connection on unload."""
+        """Clean up the BLE connection."""
         if self._client and self._client.is_connected:
-            char_notify = (
-                get_char_notify(self._generation)
-                if self._generation is not None
-                else CHAR_NOTIFY
-            )
-            try:
-                await self._client.stop_notify(char_notify)
-            except Exception:
-                _LOGGER.debug("Error stopping notifications", exc_info=True)
+            if self._tcx_transport is not None:
+                try:
+                    await self._tcx_transport.set_realtime_enabled(False)
+                except Exception:
+                    _LOGGER.debug("Error disabling real-time data", exc_info=True)
+                try:
+                    await self._tcx_transport.unsubscribe_all()
+                except Exception:
+                    _LOGGER.debug("Error stopping notifications", exc_info=True)
+            else:
+                char_notify = (
+                    get_char_notify(self._generation)
+                    if self._generation is not None
+                    else CHAR_NOTIFY
+                )
+                try:
+                    await self._client.stop_notify(char_notify)
+                except Exception:
+                    _LOGGER.debug("Error stopping notifications", exc_info=True)
             try:
                 await self._client.disconnect()
             except Exception:
                 _LOGGER.debug("Error disconnecting", exc_info=True)
         self._client = None
+        self._tcx_transport = None

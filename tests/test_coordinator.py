@@ -14,15 +14,27 @@ from homeassistant.core import HomeAssistant
 from custom_components.specialized_turbo.coordinator import (
     SpecializedTurboCoordinator,
 )
-from specialized_turbo import CHAR_NOTIFY, CHAR_NOTIFY_TCU1, BLEProfile
+from specialized_turbo import (
+    CHAR_NOTIFY,
+    CHAR_NOTIFY_TCU1,
+    BikeAdvertisement,
+    BLEProfile,
+    EncryptionKeyRequiredError,
+    ProtocolEncryptionMethod,
+)
 
-from .conftest import MOCK_ADDRESS, MOCK_GEN1_MANUFACTURER_DATA
+from .conftest import MOCK_ADDRESS, MOCK_GEN1_MANUFACTURER_DATA, make_wrapped_key
 
 _LOGGER = logging.getLogger(__name__)
 
 
 def _make_coordinator(
-    hass: HomeAssistant, pin: int | None = None
+    hass: HomeAssistant,
+    pin: str | None = None,
+    *,
+    wrapped_key: str | None = None,
+    advertisement: BikeAdvertisement | None = None,
+    reauth_callback: MagicMock | None = None,
 ) -> SpecializedTurboCoordinator:
     """Create a coordinator with mocked parent class."""
     with patch(
@@ -30,7 +42,13 @@ def _make_coordinator(
         return_value=None,
     ):
         coord = SpecializedTurboCoordinator(
-            hass, _LOGGER, address=MOCK_ADDRESS, pin=pin
+            hass,
+            _LOGGER,
+            address=MOCK_ADDRESS,
+            pin=pin,
+            wrapped_key=wrapped_key,
+            advertisement=advertisement,
+            reauth_callback=reauth_callback,
         )
     coord.hass = hass
     coord.async_update_listeners = MagicMock()
@@ -81,6 +99,49 @@ async def test_needs_poll_after_disconnect_reconnect(hass: HomeAssistant) -> Non
 
     # Bike comes back in range — needs_poll must return True to reconnect
     assert coord._needs_poll(MagicMock(), None) is True
+
+
+async def test_encrypted_bike_without_key_requests_reauth(
+    hass: HomeAssistant,
+) -> None:
+    """Test explicit failure and reauth for missing encrypted-bike key."""
+    advertisement = BikeAdvertisement(
+        generation=BLEProfile.TCX,
+        encryption=ProtocolEncryptionMethod.AES_CTR,
+        hmi_hardware="3.2.1",
+        hmi_serial="123456789",
+    )
+    reauth = MagicMock()
+    coord = _make_coordinator(
+        hass,
+        advertisement=advertisement,
+        reauth_callback=reauth,
+    )
+
+    with pytest.raises(EncryptionKeyRequiredError):
+        await coord._resolve_bike_key()
+
+    reauth.assert_called_once_with(advertisement)
+
+
+async def test_encrypted_bike_resolves_stored_wrapped_key(
+    hass: HomeAssistant,
+) -> None:
+    """Test stored wrapped key is converted to the 16-byte bike key."""
+    coord = _make_coordinator(
+        hass,
+        wrapped_key=make_wrapped_key(),
+        advertisement=BikeAdvertisement(
+            generation=BLEProfile.TCX,
+            encryption=ProtocolEncryptionMethod.AES_CTR,
+            hmi_hardware="3.2.1",
+            hmi_serial="123456789",
+        ),
+    )
+
+    assert await coord._resolve_bike_key() == bytes.fromhex(
+        "00112233445566778899aabbccddeeff"
+    )
 
 
 # --- async_poll ---
@@ -247,7 +308,7 @@ async def test_ensure_connected_reconnect_after_unavailable(
 
 async def test_ensure_connected_with_pin(hass: HomeAssistant) -> None:
     """Test ensure_connected triggers pairing when PIN is set."""
-    coord = _make_coordinator(hass, pin=1234)
+    coord = _make_coordinator(hass, pin="1234")
 
     mock_client = AsyncMock()
 
@@ -271,7 +332,7 @@ async def test_ensure_connected_pairing_not_implemented(
     hass: HomeAssistant,
 ) -> None:
     """Test pairing gracefully handles NotImplementedError."""
-    coord = _make_coordinator(hass, pin=1234)
+    coord = _make_coordinator(hass, pin="1234")
 
     mock_client = AsyncMock()
     mock_client.pair.side_effect = NotImplementedError
@@ -294,7 +355,7 @@ async def test_ensure_connected_pairing_not_implemented(
 
 async def test_ensure_connected_pairing_error(hass: HomeAssistant) -> None:
     """Test pairing gracefully handles generic errors."""
-    coord = _make_coordinator(hass, pin=1234)
+    coord = _make_coordinator(hass, pin="1234")
 
     mock_client = AsyncMock()
     mock_client.pair.side_effect = RuntimeError("Pair failed")
