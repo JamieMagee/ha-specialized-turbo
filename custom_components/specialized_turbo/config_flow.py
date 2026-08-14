@@ -21,6 +21,7 @@ from specialized_turbo import (
     BikeAdvertisement,
     BLEProfile,
     EncryptionKeyRequiredError,
+    IdentificationError,
     ProtocolEncryptionMethod,
     SpecializedConnection,
     WrappedKeyError,
@@ -94,7 +95,13 @@ class SpecializedTurboConfigFlow(ConfigFlow, domain=DOMAIN):
             await connection.connect()
         except EncryptionKeyRequiredError:
             raise
-        except (BleakError, TimeoutError, RuntimeError, ValueError):
+        except (
+            BleakError,
+            IdentificationError,
+            TimeoutError,
+            RuntimeError,
+            ValueError,
+        ):
             return False
         finally:
             await connection.disconnect()

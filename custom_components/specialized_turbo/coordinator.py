@@ -19,11 +19,17 @@ from homeassistant.core import HomeAssistant, callback
 from specialized_turbo import (
     CHAR_NOTIFY,
     TCU1_POLL_FIELDS,
+    TCX_POLL_PARAMS,
     BikeAdvertisement,
+    BikeEncryptionKey,
+    BikeInfo,
     BLEProfile,
     EncryptionKeyRequiredError,
+    IdentificationError,
+    ProtocolRevision,
     ProtocolEncryptionMethod,
     StaticKeyProvider,
+    TCXIdentification,
     TCXNotificationTransport,
     TelemetrySnapshot,
     build_request,
@@ -32,12 +38,13 @@ from specialized_turbo import (
     get_char_request_write,
     identify_tcx,
     parse_bike_advertisement,
+    parse_bike_info,
     parse_message,
+    parse_tcx_notification,
     parse_tcx_message,
     poll_tcx,
     resolve_bike_key,
 )
-from specialized_turbo.framing import is_framed_packet
 from specialized_turbo.session import ProtocolSession, TCU1Session, TCXSession
 
 _LOGGER = logging.getLogger(__name__)
@@ -78,6 +85,8 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
         self._client: BleakClient | None = None
         self._was_unavailable = False
         self._generation: BLEProfile | None = None
+        self._bike_info: BikeInfo | None = None
+        self._protocol_revision: ProtocolRevision | None = None
         self._session: ProtocolSession = TCU1Session()
         self._tcx_transport: TCXNotificationTransport | None = None
         self._char_request_write: str | None = None
@@ -93,14 +102,7 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
     ) -> bool:
         """Return whether the coordinator needs to connect or poll."""
         del seconds_since_last_update
-        if self._advertisement is None:
-            self._advertisement = parse_bike_advertisement(
-                service_info.manufacturer_data,
-                local_name=service_info.name,
-                service_uuids=service_info.service_uuids,
-            )
-        if self._advertisement is not None:
-            self._generation = self._advertisement.generation
+        self._update_protocol_metadata(service_info)
         if self._client is None or not self._client.is_connected:
             return True
         if self._last_poll_time == 0:
@@ -134,14 +136,8 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
 
         _LOGGER.debug("Connecting to Specialized Turbo at %s", self._address)
 
-        if service_info is not None and self._advertisement is None:
-            self._advertisement = parse_bike_advertisement(
-                service_info.manufacturer_data,
-                local_name=service_info.name,
-                service_uuids=service_info.service_uuids,
-            )
-        if self._advertisement is not None:
-            self._generation = self._advertisement.generation
+        if service_info is not None:
+            self._update_protocol_metadata(service_info)
 
         bike_key = await self._resolve_bike_key()
 
@@ -192,20 +188,43 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
         if self._generation == BLEProfile.TCX:
             transport = TCXNotificationTransport(client, session=TCXSession())
             self._tcx_transport = transport
-            await transport.subscribe_for_identification()
             encryption_required = (
                 self._advertisement is not None
                 and self._advertisement.encryption == ProtocolEncryptionMethod.AES_CTR
             )
-            self._session = await identify_tcx(
-                transport,
-                bike_key=bike_key,
-                encryption_required=encryption_required,
-            )
-            transport.session = self._session
+            if encryption_required:
+                if (
+                    self._bike_info is None
+                    or not self._bike_info.complete
+                    or self._bike_info.tcx_generation is None
+                    or bike_key is None
+                ):
+                    self._request_reauth()
+                    raise EncryptionKeyRequiredError(
+                        "Encrypted bike is missing protocol or key metadata"
+                    )
+                identification = TCXIdentification(
+                    transport,
+                    self._bike_info,
+                    BikeEncryptionKey(raw=bike_key),
+                )
+                try:
+                    result = await identification.run()
+                except IdentificationError as exc:
+                    self._request_reauth()
+                    raise EncryptionKeyRequiredError(
+                        "Encrypted bike identification failed"
+                    ) from exc
+                self._session = transport.session
+                self._protocol_revision = result.protocol_revision
+            else:
+                await transport.subscribe_for_identification()
+                self._session = await identify_tcx(transport)
+                transport.session = self._session
             transport.add_listener(self._notification_handler)
             await transport.subscribe_for_realtime()
-            await transport.set_realtime_enabled(True)
+            if self._protocol_revision is not None:
+                await transport.set_realtime_enabled(True)
             self._uses_tcx_messages = True
         else:
             char_notify = (
@@ -215,6 +234,39 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
             )
             await client.start_notify(char_notify, self._notification_handler)
         _LOGGER.info("Subscribed to telemetry notifications")
+
+    def _update_protocol_metadata(
+        self,
+        service_info: bluetooth.BluetoothServiceInfoBleak,
+    ) -> None:
+        """Update protocol metadata from the latest advertisement."""
+        advertisement = parse_bike_advertisement(
+            service_info.manufacturer_data,
+            local_name=service_info.name,
+            service_uuids=service_info.service_uuids,
+        )
+        current_has_hmi = (
+            self._advertisement is not None
+            and self._advertisement.hmi_hardware is not None
+            and self._advertisement.hmi_serial is not None
+        )
+        new_has_hmi = (
+            advertisement is not None
+            and advertisement.hmi_hardware is not None
+            and advertisement.hmi_serial is not None
+        )
+        if advertisement is not None and (new_has_hmi or not current_has_hmi):
+            self._advertisement = advertisement
+            self._generation = advertisement.generation
+
+        bike_info = parse_bike_info(
+            service_info.name or "",
+            service_info.manufacturer_data,
+        )
+        if bike_info.complete:
+            self._bike_info = bike_info
+            if bike_info.ble_profile is not None:
+                self._generation = bike_info.ble_profile
 
     async def _resolve_bike_key(self) -> bytes | None:
         advertisement = self._advertisement
@@ -272,11 +324,7 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
             data.hex(),
         )
 
-        framed = self._generation == BLEProfile.TCX and (
-            isinstance(self._session, TCXSession)
-            and self._session.encrypted
-            or is_framed_packet(data)
-        )
+        framed = self._generation == BLEProfile.TCX
         if self._uses_tcx_messages is None:
             self._uses_tcx_messages = framed
             _LOGGER.info(
@@ -286,8 +334,18 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
 
         try:
             if framed:
-                unpacked = self._session.unpack(data)
-                msg = parse_tcx_message(unpacked)
+                if (
+                    isinstance(self._session, TCXSession)
+                    and self._protocol_revision is not None
+                ):
+                    msg = parse_tcx_notification(
+                        self._session,
+                        data,
+                        self._protocol_revision,
+                    )
+                else:
+                    unpacked = self._session.unpack(data)
+                    msg = parse_tcx_message(unpacked)
             else:
                 msg = parse_message(data)
         except Exception:
@@ -331,10 +389,38 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
         if self._tcx_transport is None:
             return
 
-        updated = await poll_tcx(self._tcx_transport, self.snapshot)
+        if self._protocol_revision is not None:
+            updated = await poll_tcx(
+                self._tcx_transport,
+                self.snapshot,
+                self._protocol_revision,
+            )
+        else:
+            updated = await self._poll_legacy_tcx_fields()
         self._last_poll_time = time.monotonic()
         if updated:
             self.async_update_listeners()
+
+    async def _poll_legacy_tcx_fields(self) -> bool:
+        """Poll legacy TCX sessions that have no negotiated wire profile."""
+        if self._tcx_transport is None:
+            return False
+
+        updated = False
+        for param in TCX_POLL_PARAMS:
+            try:
+                response = await self._tcx_transport.request_parameter(int(param))
+                msg = parse_tcx_message(response)
+                if msg.nak_reason is None:
+                    self.snapshot.update_from_message(msg)
+                    updated = True
+            except Exception:
+                _LOGGER.debug(
+                    "Failed to poll legacy TCX param %d",
+                    int(param),
+                    exc_info=True,
+                )
+        return updated
 
     @property
     def connected(self) -> bool:
@@ -354,16 +440,21 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
             self._was_unavailable = True
         self._client = None
         self._tcx_transport = None
+        self._protocol_revision = None
         self.async_update_listeners()
 
     async def async_shutdown(self) -> None:
         """Clean up the BLE connection."""
         if self._client and self._client.is_connected:
             if self._tcx_transport is not None:
-                try:
-                    await self._tcx_transport.set_realtime_enabled(False)
-                except Exception:
-                    _LOGGER.debug("Error disabling real-time data", exc_info=True)
+                if self._protocol_revision is not None:
+                    try:
+                        await self._tcx_transport.set_realtime_enabled(False)
+                    except Exception:
+                        _LOGGER.debug(
+                            "Error disabling real-time data",
+                            exc_info=True,
+                        )
                 try:
                     await self._tcx_transport.unsubscribe_all()
                 except Exception:
@@ -384,3 +475,4 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
                 _LOGGER.debug("Error disconnecting", exc_info=True)
         self._client = None
         self._tcx_transport = None
+        self._protocol_revision = None

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from types import SimpleNamespace
 
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -18,12 +19,22 @@ from specialized_turbo import (
     CHAR_NOTIFY,
     CHAR_NOTIFY_TCU1,
     BikeAdvertisement,
+    BikeEncryptionKey,
     BLEProfile,
     EncryptionKeyRequiredError,
+    ProtocolRevision,
     ProtocolEncryptionMethod,
+    TCXGeneration,
 )
+from specialized_turbo.session import TCXSession
 
-from .conftest import MOCK_ADDRESS, MOCK_GEN1_MANUFACTURER_DATA, make_wrapped_key
+from .conftest import (
+    MOCK_ADDRESS,
+    MOCK_ENCRYPTED_MANUFACTURER_DATA,
+    MOCK_GEN1_MANUFACTURER_DATA,
+    make_service_info,
+    make_wrapped_key,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -142,6 +153,95 @@ async def test_encrypted_bike_resolves_stored_wrapped_key(
     assert await coord._resolve_bike_key() == bytes.fromhex(
         "00112233445566778899aabbccddeeff"
     )
+
+
+async def test_needs_poll_decodes_tcx_wire_profile(hass: HomeAssistant) -> None:
+    """Test a modern advertisement selects its TCX generation."""
+    coord = _make_coordinator(hass)
+    service_info = make_service_info(
+        name="WSBC001057439S",
+        manufacturer_data=MOCK_ENCRYPTED_MANUFACTURER_DATA,
+    )
+
+    coord._needs_poll(service_info, None)
+
+    assert coord._bike_info is not None
+    assert coord._bike_info.hmi_hardware_version == "B.3.3"
+    assert coord._bike_info.tcx_generation is TCXGeneration.TCX2
+
+
+async def test_partial_advertisement_does_not_drop_encryption_metadata(
+    hass: HomeAssistant,
+) -> None:
+    """Test split Apple frames cannot replace known encrypted-bike metadata."""
+    encrypted = BikeAdvertisement(
+        generation=BLEProfile.TCX,
+        encryption=ProtocolEncryptionMethod.AES_CTR,
+        hmi_hardware="B.3.3",
+        hmi_serial="80005338",
+    )
+    coord = _make_coordinator(hass, advertisement=encrypted)
+    service_info = make_service_info(
+        name="WSBC001057439S",
+        manufacturer_data={
+            0x004C: bytes.fromhex("0215545552424f484d4932303137010000005fe033060a")
+        },
+    )
+    service_info.service_uuids = []
+
+    coord._needs_poll(service_info, None)
+
+    assert coord._advertisement == encrypted
+
+
+async def test_ensure_connected_uses_profile_aware_identification(
+    hass: HomeAssistant,
+) -> None:
+    """Test encrypted bikes use the mapped TCX identification state machine."""
+    coord = _make_coordinator(
+        hass,
+        wrapped_key=make_wrapped_key(),
+    )
+    service_info = make_service_info(
+        name="WSBC001057439S",
+        manufacturer_data=MOCK_ENCRYPTED_MANUFACTURER_DATA,
+    )
+    service_info.device = MagicMock()
+    client = AsyncMock()
+    client.is_connected = True
+    transport = MagicMock()
+    transport.session = TCXSession()
+    transport.subscribe_for_realtime = AsyncMock()
+    transport.set_realtime_enabled = AsyncMock()
+    revision = ProtocolRevision(TCXGeneration.TCX2, 0x12)
+    identification = MagicMock()
+    identification.run = AsyncMock(
+        return_value=SimpleNamespace(protocol_revision=revision)
+    )
+
+    with (
+        patch(
+            "custom_components.specialized_turbo.coordinator.establish_connection",
+            new_callable=AsyncMock,
+            return_value=client,
+        ),
+        patch(
+            "custom_components.specialized_turbo.coordinator.TCXNotificationTransport",
+            return_value=transport,
+        ),
+        patch(
+            "custom_components.specialized_turbo.coordinator.TCXIdentification",
+            return_value=identification,
+        ) as identification_type,
+    ):
+        await coord._ensure_connected(service_info)
+
+    key = identification_type.call_args.args[2]
+    assert isinstance(key, BikeEncryptionKey)
+    assert key.raw == bytes.fromhex("00112233445566778899aabbccddeeff")
+    assert coord._protocol_revision == revision
+    identification.run.assert_awaited_once()
+    transport.set_realtime_enabled.assert_awaited_once_with(True)
 
 
 # --- async_poll ---
@@ -609,11 +709,33 @@ async def test_tcx_notification_battery_charge(hass: HomeAssistant) -> None:
 
     coord = _make_coordinator(hass)
     coord._generation = BLEProfile.TCX
+    coord._session = TCXSession()
+    coord._protocol_revision = ProtocolRevision(TCXGeneration.TCX2, 0x12)
 
-    # param 26 (BATTERY1_STATE_OF_CHARGE) = 0x001a, data = 0x34 (52%)
-    payload = b"\x00\x1a\x34" + b"\x00" * 15
+    # BATTERY1_STATE_OF_CHARGE uses wire command 0x0500, data = 0x34 (52%).
+    payload = b"\x05\x00\x34"
     data = pack_tcx(payload)
     coord._handle_notification(data)
 
     assert coord.snapshot.battery.charge_pct == 52
     assert coord.snapshot.message_count == 1
+
+
+async def test_tcx_poll_uses_negotiated_revision(hass: HomeAssistant) -> None:
+    """Test TCX polling uses the active generation and revision map."""
+    coord = _make_coordinator(hass)
+    coord._tcx_transport = MagicMock()
+    coord._protocol_revision = ProtocolRevision(TCXGeneration.TCX2, 0x12)
+
+    with patch(
+        "custom_components.specialized_turbo.coordinator.poll_tcx",
+        new_callable=AsyncMock,
+        return_value=False,
+    ) as poll:
+        await coord._poll_tcx_fields()
+
+    poll.assert_awaited_once_with(
+        coord._tcx_transport,
+        coord.snapshot,
+        coord._protocol_revision,
+    )
