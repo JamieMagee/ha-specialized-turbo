@@ -1166,7 +1166,7 @@ wheels = [
 
 [[package]]
 name = "ha-specialized-turbo"
-version = "0.5.0"
+version = "0.5.1"
 source = { virtual = "." }
 
 [package.dev-dependencies]
@@ -1192,7 +1192,7 @@ dev = [
     { name = "pytest-cov", specifier = ">=7.0" },
     { name = "pytest-homeassistant-custom-component" },
     { name = "pyudev", specifier = ">=0.24.4" },
-    { name = "specialized-turbo", extras = ["cloud"], specifier = "==0.7.0" },
+    { name = "specialized-turbo", extras = ["cloud"], specifier = "==0.7.1" },
 ]
 
 [[package]]
@@ -2788,15 +2788,15 @@ wheels = [
 
 [[package]]
 name = "specialized-turbo"
-version = "0.7.0"
+version = "0.7.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "bleak" },
     { name = "cryptography" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/fe/f2/f3ebb5b687d62c8b8800ca5c293f797fa658cd9e59142545f3dadef59894/specialized_turbo-0.7.0.tar.gz", hash = "sha256:d75900ed95d0d3a21d6e105f0aed2508b0b6bbcbd8e4bc267c2e043bb248bfd5", size = 75497, upload-time = "2026-08-12T19:13:48.193Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/95/e3/13dd9d4a83f1522408ed25af9edb8441518337f138f1fe85f3585025a47d/specialized_turbo-0.7.1.tar.gz", hash = "sha256:4c3c48dbdbc2f625f6e8715a1a90e3ddd8fe57d22c272fd93235b1ea61b2b48e", size = 75511, upload-time = "2026-08-14T16:05:55.854Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/53/f6/fcc047db93069295c4e31bf18a934bd26925b48b48b5db7b25111f15b667/specialized_turbo-0.7.0-py3-none-any.whl", hash = "sha256:b35f612e83f24eb44cd15799ff6573e03b25432255c1f62acf3d57dc4e91fc98", size = 49016, upload-time = "2026-08-12T19:13:46.863Z" },
+    { url = "https://files.pythonhosted.org/packages/e0/23/c960d3902397ddc470a2538a3fcbdc3ee161bcc29edff5f47e9f8d987548/specialized_turbo-0.7.1-py3-none-any.whl", hash = "sha256:6281037bf9e46fbdfbf7e3fbc91fc2065f1ded1079b24e5709a413617eb4a5a9", size = 49023, upload-time = "2026-08-14T16:05:54.6Z" },
 ]
 
 [package.optional-dependencies]
