@@ -1166,7 +1166,7 @@ wheels = [
 
 [[package]]
 name = "ha-specialized-turbo"
-version = "0.5.3"
+version = "0.5.4"
 source = { virtual = "." }
 
 [package.dev-dependencies]

@@ -6,6 +6,7 @@ import asyncio
 import logging
 import time
 from collections.abc import Callable
+from inspect import iscoroutinefunction
 
 from bleak import BleakClient, BleakError
 from bleak.backends.characteristic import BleakGATTCharacteristic
@@ -18,6 +19,7 @@ from homeassistant.core import HomeAssistant, callback
 
 from specialized_turbo import (
     CHAR_NOTIFY,
+    CHAR_NOTIFY_TCU1,
     TCU1_POLL_FIELDS,
     TCX_POLL_PARAMS,
     BikeAdvertisement,
@@ -167,6 +169,8 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
             _LOGGER.info("Specialized Turbo at %s is available again", self._address)
             self._was_unavailable = False
 
+        self._update_generation_from_services(client)
+
         if self._generation is not None:
             self._char_request_write = get_char_request_write(self._generation)
             self._char_request_read = get_char_request_read(self._generation)
@@ -234,6 +238,18 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
             )
             await client.start_notify(char_notify, self._notification_handler)
         _LOGGER.info("Subscribed to telemetry notifications")
+
+    def _update_generation_from_services(self, client: BleakClient) -> None:
+        """Resolve an unknown or incorrect profile from connected GATT services."""
+        get_characteristic = client.services.get_characteristic
+        if iscoroutinefunction(get_characteristic):
+            return
+        has_tcu1 = get_characteristic(CHAR_NOTIFY_TCU1) is not None
+        has_tcx = get_characteristic(CHAR_NOTIFY) is not None
+        if has_tcu1 and not has_tcx:
+            self._generation = BLEProfile.TCU1
+        elif has_tcx and not has_tcu1:
+            self._generation = BLEProfile.TCX
 
     def _update_protocol_metadata(
         self,

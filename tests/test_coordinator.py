@@ -662,6 +662,38 @@ async def test_ensure_connected_tcu1_uses_tcu1_char_notify(
     )
 
 
+async def test_ensure_connected_detects_tcu1_from_gatt_services(
+    hass: HomeAssistant,
+) -> None:
+    """Test a missing advertisement cannot make a Gen1 bike use TCX UUIDs."""
+    coord = _make_coordinator(hass)
+    mock_client = AsyncMock()
+    mock_client.is_connected = True
+    mock_client.services = MagicMock()
+    mock_client.services.get_characteristic.side_effect = lambda uuid: (
+        MagicMock() if uuid == CHAR_NOTIFY_TCU1 else None
+    )
+
+    with (
+        patch(
+            "custom_components.specialized_turbo.coordinator.bluetooth.async_ble_device_from_address",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "custom_components.specialized_turbo.coordinator.establish_connection",
+            new_callable=AsyncMock,
+            return_value=mock_client,
+        ),
+    ):
+        await coord._ensure_connected()
+
+    assert coord._generation is BLEProfile.TCU1
+    mock_client.start_notify.assert_awaited_once_with(
+        CHAR_NOTIFY_TCU1,
+        coord._notification_handler,
+    )
+
+
 async def test_tcu1_notification_with_ff_padding(hass: HomeAssistant) -> None:
     """Test TCU1 notifications with FF padding parse correctly."""
     coord = _make_coordinator(hass)
