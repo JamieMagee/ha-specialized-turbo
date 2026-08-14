@@ -36,7 +36,7 @@ MOCK_ADDRESS_FORMATTED = "dc:dd:bb:4a:d6:55"
 MOCK_NAME = "SPECIALIZED"
 MOCK_MANUFACTURER_DATA: dict[int, bytes] = {0x0059: b"TURBOHMItest1234"}
 MOCK_ENCRYPTED_MANUFACTURER_DATA: dict[int, bytes] = {
-    0x0059: (123456789).to_bytes(4, "little") + bytes([3, 2, 1, 0, 9, 4])
+    0x0059: bytes.fromhex("dac8c404423333330601")
 }
 
 # TCU1 (2018 Levo) test data

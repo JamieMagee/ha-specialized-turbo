@@ -197,8 +197,8 @@ async def test_encrypted_discovery_uses_account_without_storing_credentials(
     assert result["data"][CONF_PIN] == "012345"
     assert result["data"][CONF_KEY_SOURCE] == KEY_SOURCE_ACCOUNT
     assert result["data"][CONF_WRAPPED_KEY] == wrapped_key
-    assert result["data"][CONF_HMI_HARDWARE] == "3.2.1"
-    assert result["data"][CONF_HMI_SERIAL] == "123456789"
+    assert result["data"][CONF_HMI_HARDWARE] == "B.3.3"
+    assert result["data"][CONF_HMI_SERIAL] == "80005338"
     assert "email" not in result["data"]
     assert "password" not in result["data"]
 
