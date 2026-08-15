@@ -332,6 +332,9 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
     @callback
     def _handle_notification(self, data: bytes) -> None:
         """Parse a notification and update the snapshot."""
+        if not data:
+            return
+
         _LOGGER.debug(
             "notify raw (%d bytes, gen=%s, session=%s): %s",
             len(data),

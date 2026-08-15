@@ -272,6 +272,16 @@ async def test_notification_handler_valid(hass: HomeAssistant) -> None:
     coord.async_update_listeners.assert_called_once()
 
 
+async def test_empty_notification_is_ignored(hass: HomeAssistant) -> None:
+    """Test proxy subscription events do not produce parse errors or updates."""
+    coord = _make_coordinator(hass)
+
+    coord._handle_notification(b"")
+
+    assert coord.snapshot.message_count == 0
+    coord.async_update_listeners.assert_not_called()
+
+
 async def test_notification_handler_speed(hass: HomeAssistant) -> None:
     """Test notification handler with speed value."""
     coord = _make_coordinator(hass)
