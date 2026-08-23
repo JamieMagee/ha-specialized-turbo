@@ -2,7 +2,7 @@
 
 Custom integration that reads telemetry from Specialized Turbo e-bikes over Bluetooth Low Energy. Auto-discovers your bike and exposes 26 sensors.
 
-Supports four protocol generations (TCU1, TCX2, TCX3, TCX4).
+Supports TCU1, TCX1, TCX2, TCX3, and TCX4 bikes.
 
 ## Sensors
 
@@ -126,7 +126,10 @@ The coordinator reconnects automatically if the BLE connection drops.
 
 ## Protocol
 
-Uses the [specialized-turbo](https://github.com/JamieMagee/specialized-turbo) Python library, which supports TCU1, TCX2, TCX3, and TCX4 protocol generations. See the library's [protocol reference](https://github.com/JamieMagee/specialized-turbo/blob/main/docs/protocol.md) for wire format details.
+Uses the [specialized-turbo](https://github.com/JamieMagee/specialized-turbo)
+Python library, which supports TCU1 and TCX1 through TCX4. See the library's
+[protocol reference](https://github.com/JamieMagee/specialized-turbo/blob/main/docs/protocol.md)
+for wire format details.
 
 ## License
 

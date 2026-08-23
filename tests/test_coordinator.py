@@ -18,6 +18,9 @@ from custom_components.specialized_turbo.coordinator import (
 from specialized_turbo import (
     CHAR_NOTIFY,
     CHAR_NOTIFY_TCU1,
+    CHAR_REQUEST_READ,
+    CHAR_REQUEST_WRITE,
+    SERVICE_DATA_WRITE,
     BikeAdvertisement,
     BikeEncryptionKey,
     BLEProfile,
@@ -26,7 +29,7 @@ from specialized_turbo import (
     ProtocolEncryptionMethod,
     TCXGeneration,
 )
-from specialized_turbo.session import TCXSession
+from specialized_turbo.session import TCU1Session, TCXSession
 
 from .conftest import (
     MOCK_ADDRESS,
@@ -702,6 +705,75 @@ async def test_ensure_connected_detects_tcu1_from_gatt_services(
         CHAR_NOTIFY_TCU1,
         coord._notification_handler,
     )
+
+
+async def test_ensure_connected_detects_tcx1_from_gatt_services(
+    hass: HomeAssistant,
+) -> None:
+    """Test TURBOHMI services with a read-only 0x11 use TCX1 request-read."""
+    coord = _make_coordinator(hass, pin="1234")
+    mock_client = AsyncMock()
+    mock_client.is_connected = True
+    mock_client.services = MagicMock()
+    request_read = SimpleNamespace(properties=["read"])
+    mock_client.services.get_characteristic.side_effect = lambda uuid: (
+        object()
+        if uuid == CHAR_NOTIFY
+        else request_read
+        if uuid == CHAR_REQUEST_READ
+        else None
+    )
+    mock_client.services.get_service.side_effect = lambda uuid: (
+        SimpleNamespace(characteristics=[object()])
+        if uuid == SERVICE_DATA_WRITE
+        else None
+    )
+
+    with (
+        patch(
+            "custom_components.specialized_turbo.coordinator.bluetooth.async_ble_device_from_address",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "custom_components.specialized_turbo.coordinator.establish_connection",
+            new_callable=AsyncMock,
+            return_value=mock_client,
+        ),
+    ):
+        await coord._ensure_connected()
+
+    assert coord._generation is BLEProfile.TCX
+    assert coord._uses_tcx1 is True
+    assert coord._uses_tcx_messages is False
+    assert isinstance(coord._session, TCU1Session)
+    assert coord._tcx_transport is None
+    assert coord._char_request_write == CHAR_REQUEST_WRITE
+    assert coord._char_request_read == CHAR_REQUEST_READ
+    mock_client.start_notify.assert_awaited_once_with(
+        CHAR_NOTIFY,
+        coord._notification_handler,
+    )
+    mock_client.pair.assert_awaited_once_with(protection_level=2)
+
+    coord._handle_notification(bytes.fromhex("000c31"))
+    assert coord.snapshot.battery.charge_pct == 49
+
+    with (
+        patch.object(
+            coord,
+            "_poll_tcu1_fields",
+            new_callable=AsyncMock,
+        ) as poll_legacy,
+        patch.object(
+            coord,
+            "_poll_tcx_fields",
+            new_callable=AsyncMock,
+        ) as poll_modern,
+    ):
+        await coord._do_poll()
+
+    poll_legacy.assert_awaited_once()
+    poll_modern.assert_not_awaited()
 
 
 async def test_tcu1_notification_with_ff_padding(hass: HomeAssistant) -> None:

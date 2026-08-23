@@ -19,7 +19,6 @@ from homeassistant.core import HomeAssistant, callback
 
 from specialized_turbo import (
     CHAR_NOTIFY,
-    CHAR_NOTIFY_TCU1,
     TCU1_POLL_FIELDS,
     TCX_POLL_PARAMS,
     BikeAdvertisement,
@@ -35,10 +34,12 @@ from specialized_turbo import (
     TCXNotificationTransport,
     TelemetrySnapshot,
     build_request,
+    detect_ble_profile_from_services,
     get_char_notify,
     get_char_request_read,
     get_char_request_write,
     identify_tcx,
+    is_tcx1_service_structure,
     parse_bike_advertisement,
     parse_bike_info,
     parse_message,
@@ -89,6 +90,7 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
         self._generation: BLEProfile | None = None
         self._bike_info: BikeInfo | None = None
         self._protocol_revision: ProtocolRevision | None = None
+        self._uses_tcx1 = False
         self._session: ProtocolSession = TCU1Session()
         self._tcx_transport: TCXNotificationTransport | None = None
         self._char_request_write: str | None = None
@@ -175,7 +177,7 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
             self._char_request_write = get_char_request_write(self._generation)
             self._char_request_read = get_char_request_read(self._generation)
 
-        if self._generation == BLEProfile.TCX:
+        if self._generation == BLEProfile.TCX and not self._uses_tcx1:
             self._session = TCXSession()
         else:
             self._session = TCU1Session()
@@ -189,7 +191,7 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
             except Exception:
                 _LOGGER.warning("Pairing failed", exc_info=True)
 
-        if self._generation == BLEProfile.TCX:
+        if self._generation == BLEProfile.TCX and not self._uses_tcx1:
             transport = TCXNotificationTransport(client, session=TCXSession())
             self._tcx_transport = transport
             encryption_required = (
@@ -237,6 +239,7 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
                 else CHAR_NOTIFY
             )
             await client.start_notify(char_notify, self._notification_handler)
+            self._uses_tcx_messages = False
         _LOGGER.info("Subscribed to telemetry notifications")
 
     def _update_generation_from_services(self, client: BleakClient) -> None:
@@ -244,12 +247,15 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
         get_characteristic = client.services.get_characteristic
         if iscoroutinefunction(get_characteristic):
             return
-        has_tcu1 = get_characteristic(CHAR_NOTIFY_TCU1) is not None
-        has_tcx = get_characteristic(CHAR_NOTIFY) is not None
-        if has_tcu1 and not has_tcx:
-            self._generation = BLEProfile.TCU1
-        elif has_tcx and not has_tcu1:
-            self._generation = BLEProfile.TCX
+        generation = detect_ble_profile_from_services(client.services)
+        if generation is not None:
+            self._generation = generation
+        self._uses_tcx1 = (
+            self._generation == BLEProfile.TCX
+            and is_tcx1_service_structure(client.services)
+        )
+        if self._uses_tcx1:
+            _LOGGER.info("Detected legacy TCX1 write-read service structure")
 
     def _update_protocol_metadata(
         self,
@@ -343,8 +349,9 @@ class SpecializedTurboCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
             data.hex(),
         )
 
-        framed = self._generation == BLEProfile.TCX
+        framed = self._uses_tcx_messages
         if self._uses_tcx_messages is None:
+            framed = self._generation == BLEProfile.TCX and not self._uses_tcx1
             self._uses_tcx_messages = framed
             _LOGGER.info(
                 "Auto-detected message format: %s",
