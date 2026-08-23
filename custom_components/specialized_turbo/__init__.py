@@ -17,7 +17,6 @@ from specialized_turbo import (
 from .const import (
     CONF_HMI_HARDWARE,
     CONF_HMI_SERIAL,
-    CONF_PIN,
     CONF_WRAPPED_KEY,
 )
 from .coordinator import SpecializedTurboCoordinator
@@ -34,8 +33,6 @@ async def async_setup_entry(
 ) -> bool:
     """Set up Specialized Turbo from a config entry."""
     address: str = entry.data[CONF_ADDRESS]
-    pin_value = entry.data.get(CONF_PIN)
-    pin = str(pin_value) if pin_value is not None else None
     wrapped_key: str | None = entry.data.get(CONF_WRAPPED_KEY)
     hmi_hardware: str | None = entry.data.get(CONF_HMI_HARDWARE)
     hmi_serial: str | None = entry.data.get(CONF_HMI_SERIAL)
@@ -64,7 +61,6 @@ async def async_setup_entry(
         hass,
         _LOGGER,
         address=address,
-        pin=pin,
         wrapped_key=wrapped_key,
         advertisement=advertisement,
         reauth_callback=request_reauth,
@@ -74,7 +70,7 @@ async def async_setup_entry(
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
-    # Start the coordinator — it will connect and subscribe on first poll.
+    # Start the coordinator. It will connect and subscribe on first poll.
     # async_start() returns a callback that stops the coordinator.
     entry.async_on_unload(coordinator.async_start())
 
@@ -97,11 +93,9 @@ async def async_migrate_entry(
     hass: HomeAssistant,
     entry: SpecializedTurboConfigEntry,
 ) -> bool:
-    """Migrate legacy PIN storage without forcing reconfiguration."""
-    if entry.version == 1:
+    """Remove the legacy PIN field while preserving key material."""
+    if entry.version < 3:
         data = dict(entry.data)
-        pin = data.get(CONF_PIN)
-        if pin is not None:
-            data[CONF_PIN] = str(pin)
-        hass.config_entries.async_update_entry(entry, data=data, version=2)
+        data.pop("pin", None)
+        hass.config_entries.async_update_entry(entry, data=data, version=3)
     return True

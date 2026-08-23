@@ -8,7 +8,6 @@ from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import CONF_ADDRESS
 from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import MockConfigEntry
-
 from specialized_turbo import TelemetrySnapshot
 
 from custom_components.specialized_turbo import async_migrate_entry
@@ -119,8 +118,8 @@ async def test_unload_entry(hass: HomeAssistant) -> None:
     mock_coordinator.async_shutdown.assert_called_once()
 
 
-async def test_migrate_pin_to_string(hass: HomeAssistant) -> None:
-    """Test version-1 entries preserve PINs as strings after migration."""
+async def test_migrate_removes_legacy_pin(hass: HomeAssistant) -> None:
+    """Test migration removes the unused legacy PIN."""
     entry = MockConfigEntry(
         domain=DOMAIN,
         version=1,
@@ -130,5 +129,5 @@ async def test_migrate_pin_to_string(hass: HomeAssistant) -> None:
     entry.add_to_hass(hass)
 
     assert await async_migrate_entry(hass, entry) is True
-    assert entry.version == 2
-    assert entry.data[CONF_PIN] == "1234"
+    assert entry.version == 3
+    assert CONF_PIN not in entry.data

@@ -60,16 +60,15 @@ Copy the `custom_components/specialized_turbo` folder to your `config/custom_com
 
 1. Turn on your bike
 2. It should appear in Settings > Devices & Services
-3. Enter the pairing PIN from the bike's TCU screen (if prompted)
-4. For a newer encrypted bike, choose either:
+3. For a newer encrypted bike, choose either:
    - sign in to your Specialized account so Home Assistant can retrieve the
      bike's wrapped key; or
    - enter the 64-character wrapped key manually.
-5. Sensors show up after the encrypted identification handshake completes
+4. Sensors show up after the encrypted identification handshake completes
 
 Account passwords and cloud tokens are not stored. The integration persists
-only the per-bike wrapped key and HMI identifiers. Diagnostics redact the PIN,
-wrapped key, and HMI identifiers.
+only the per-bike wrapped key and HMI identifiers. Diagnostics redact the
+wrapped key, HMI identifiers, and any PIN left by an older config entry.
 
 If auto-discovery doesn't work, add it manually: Settings > Devices & Services > Add Integration > Specialized Turbo.
 
@@ -77,7 +76,9 @@ Older bikes that advertise only a `WSBC...` local name are supported. The
 integration connects first, then selects the TCU1 or TCX protocol from the
 bike's GATT services.
 
-Some newer bikes use numeric comparison pairing instead of a PIN. On those, pair through your OS Bluetooth settings first, then set up the integration without a PIN.
+The integration asks the Bluetooth backend to pair when the bike requires it.
+If your Bluetooth adapter or ESPHome proxy cannot provide the required pairing
+agent, pair the bike through the operating system first.
 
 ## Requirements
 
@@ -118,11 +119,12 @@ The coordinator reconnects automatically if the BLE connection drops.
 - Check if another app has an active BLE connection -- only one client at a time.
 - Try restarting the integration from Settings > Devices & Services.
 
-### Pairing PIN not accepted
+### Pairing fails
 
-- The PIN is displayed on the bike's TCU screen during pairing.
-- If you don't see a PIN prompt, the bike may already be paired with another device.
-- Some newer bikes use numeric comparison instead of PIN entry. Pair via your OS Bluetooth settings first, then set up the integration without a PIN.
+- Make sure the bike is not connected to another app or adapter.
+- Some bikes require operating-system confirmation or numeric comparison.
+- ESPHome Bluetooth proxies may not support the required pairing agent. Pair
+  through a local Bluetooth adapter or the operating system first.
 
 ## Protocol
 

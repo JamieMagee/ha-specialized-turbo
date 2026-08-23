@@ -17,13 +17,13 @@ if sys.platform == "win32":
 
 
 @pytest.fixture(autouse=True)
-def auto_enable_custom_integrations(enable_custom_integrations: None) -> None:  # noqa: PT004
+def auto_enable_custom_integrations(enable_custom_integrations: None) -> None:
     """Enable custom integrations in all tests."""
     return
 
 
 @pytest.fixture(autouse=True)
-def mock_bluetooth(  # noqa: PT004
+def mock_bluetooth(
     mock_bleak_scanner_start: MagicMock,
     mock_bluetooth_adapters: None,
 ) -> None:

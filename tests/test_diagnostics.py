@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 from homeassistant.const import CONF_ADDRESS
 from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import MockConfigEntry
+from specialized_turbo import TelemetrySnapshot
 
 from custom_components.specialized_turbo.const import (
     CONF_HMI_HARDWARE,
@@ -18,7 +19,6 @@ from custom_components.specialized_turbo.const import (
 from custom_components.specialized_turbo.diagnostics import (
     async_get_config_entry_diagnostics,
 )
-from specialized_turbo import TelemetrySnapshot
 
 from .conftest import MOCK_ADDRESS, MOCK_ADDRESS_FORMATTED
 

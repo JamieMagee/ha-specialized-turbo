@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Any
+from collections.abc import Callable
+from typing import Any, cast
 
 import voluptuous as vol
 from bleak import BleakClient
+from bleak.backends.device import BLEDevice
 from bleak.exc import BleakError
 from bleak_retry_connector import establish_connection
 from homeassistant.components.bluetooth import (
@@ -16,9 +18,11 @@ from homeassistant.components.bluetooth import (
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
 from homeassistant.const import CONF_ADDRESS, CONF_EMAIL, CONF_PASSWORD
 from homeassistant.helpers.device_registry import format_mac
+from homeassistant.helpers.httpx_client import get_async_client
 
 from specialized_turbo import (
     BikeAdvertisement,
+    BikeInfo,
     BLEProfile,
     EncryptionKeyRequiredError,
     IdentificationError,
@@ -27,6 +31,7 @@ from specialized_turbo import (
     WrappedKeyError,
     is_specialized_advertisement,
     parse_bike_advertisement,
+    parse_bike_info,
     unwrap_keystore_key,
 )
 from specialized_turbo.cloud import (
@@ -39,7 +44,6 @@ from .const import (
     CONF_HMI_HARDWARE,
     CONF_HMI_SERIAL,
     CONF_KEY_SOURCE,
-    CONF_PIN,
     CONF_WRAPPED_KEY,
     DOMAIN,
     KEY_SOURCE_ACCOUNT,
@@ -50,33 +54,31 @@ from .const import (
 class SpecializedTurboConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Specialized Turbo bikes."""
 
-    VERSION = 2
+    VERSION = 3
 
     def __init__(self) -> None:
         self._discovery_info: BluetoothServiceInfoBleak | None = None
         self._discovered_devices: dict[str, BluetoothServiceInfoBleak] = {}
         self._address: str | None = None
         self._title = "Specialized Turbo"
-        self._pin: str | None = None
         self._advertisement: BikeAdvertisement | None = None
+        self._bike_info: BikeInfo | None = None
         self._target_entry_id: str | None = None
 
     async def _async_test_connection(self, address: str) -> bool:
-        """Attempt a bare BLE connection for legacy bikes."""
-        ble_device = async_ble_device_from_address(self.hass, address, connectable=True)
-        if ble_device is None:
-            return False
-        try:
-            client = await establish_connection(BleakClient, ble_device, address)
-            await client.disconnect()
-        except (BleakError, TimeoutError):
-            return False
-        return True
+        """Validate a legacy or advertisement-incomplete bike connection."""
+        return await self._async_validate_connection()
 
     async def _async_validate_encrypted_connection(self, wrapped_key: str) -> bool:
         """Run the encrypted identification handshake before saving an entry."""
+        return await self._async_validate_connection(wrapped_key)
+
+    async def _async_validate_connection(
+        self,
+        wrapped_key: str | None = None,
+    ) -> bool:
+        """Run the upstream connection setup with Home Assistant's BLE client."""
         assert self._address is not None
-        assert self._advertisement is not None
         ble_device = async_ble_device_from_address(
             self.hass,
             self._address,
@@ -84,12 +86,25 @@ class SpecializedTurboConfigFlow(ConfigFlow, domain=DOMAIN):
         )
         if ble_device is None:
             return False
+
+        async def client_factory(
+            address_or_device: str | BLEDevice,
+            disconnected_callback: Callable[[BleakClient], None] | None,
+        ) -> BleakClient:
+            return await establish_connection(
+                BleakClient,
+                cast(BLEDevice, address_or_device),
+                self._address or "Specialized Turbo",
+                disconnected_callback=disconnected_callback,
+            )
+
         connection = SpecializedConnection(
             ble_device,
-            pin=self._pin,
             advertisement=self._advertisement,
+            bike_info=self._bike_info,
             wrapped_key=wrapped_key,
             discovery_timeout=0,
+            client_factory=client_factory,
         )
         try:
             await connection.connect()
@@ -174,8 +189,6 @@ class SpecializedTurboConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         errors: dict[str, str] = {}
         if user_input is not None:
-            pin = user_input.get(CONF_PIN)
-            self._pin = str(pin) if pin else None
             if self._requires_encryption:
                 source = user_input.get(CONF_KEY_SOURCE)
                 if source is None:
@@ -296,7 +309,6 @@ class SpecializedTurboConfigFlow(ConfigFlow, domain=DOMAIN):
         self._target_entry_id = entry.entry_id
         self._address = entry.data[CONF_ADDRESS]
         self._title = entry.title
-        self._pin = entry.data.get(CONF_PIN)
         hmi_hardware = entry.data.get(CONF_HMI_HARDWARE)
         hmi_serial = entry.data.get(CONF_HMI_SERIAL)
         if hmi_hardware is not None and hmi_serial is not None:
@@ -326,29 +338,34 @@ class SpecializedTurboConfigFlow(ConfigFlow, domain=DOMAIN):
         self,
         user_input: dict[str, Any] | None = None,
     ) -> ConfigFlowResult:
-        """Update the pairing PIN."""
+        """Replace the wrapped key for an encrypted bike."""
+        del user_input
         entry = self._get_reconfigure_entry()
-        if user_input is not None:
-            pin = user_input.get(CONF_PIN)
-            return self.async_update_reload_and_abort(
-                entry,
-                data_updates={CONF_PIN: str(pin) if pin else None},
-            )
-        return self.async_show_form(
-            step_id="reconfigure",
-            data_schema=vol.Schema({vol.Optional(CONF_PIN): str}),
+        hmi_hardware = entry.data.get(CONF_HMI_HARDWARE)
+        hmi_serial = entry.data.get(CONF_HMI_SERIAL)
+        if hmi_hardware is None or hmi_serial is None:
+            return self.async_abort(reason="not_encrypted")
+        self._target_entry_id = entry.entry_id
+        self._address = entry.data[CONF_ADDRESS]
+        self._title = entry.title
+        self._advertisement = BikeAdvertisement(
+            generation=BLEProfile.TCX,
+            encryption=ProtocolEncryptionMethod.AES_CTR,
+            hmi_hardware=hmi_hardware,
+            hmi_serial=hmi_serial,
         )
+        return await self.async_step_key_source()
 
     async def _async_fetch_account_key(self, email: str, password: str) -> str:
         assert self._advertisement is not None
         assert self._advertisement.hmi_hardware is not None
         assert self._advertisement.hmi_serial is not None
-        async with SpecializedCloudClient() as cloud:
-            await cloud.login(email, password)
-            return await cloud.get_wrapped_key(
-                hmi_hardware=self._advertisement.hmi_hardware,
-                hmi_serial=self._advertisement.hmi_serial,
-            )
+        cloud = SpecializedCloudClient(client=get_async_client(self.hass))
+        await cloud.login(email, password)
+        return await cloud.get_wrapped_key(
+            hmi_hardware=self._advertisement.hmi_hardware,
+            hmi_serial=self._advertisement.hmi_serial,
+        )
 
     def _set_device(self, info: BluetoothServiceInfoBleak) -> None:
         self._discovery_info = info
@@ -358,6 +375,10 @@ class SpecializedTurboConfigFlow(ConfigFlow, domain=DOMAIN):
             info.manufacturer_data,
             local_name=info.name,
             service_uuids=info.service_uuids,
+        )
+        self._bike_info = parse_bike_info(
+            info.name or "",
+            info.manufacturer_data,
         )
 
     @property
@@ -376,7 +397,6 @@ class SpecializedTurboConfigFlow(ConfigFlow, domain=DOMAIN):
                     for address, info in self._discovered_devices.items()
                 }
             )
-        fields[vol.Optional(CONF_PIN)] = str
         if self._requires_encryption:
             fields[vol.Required(CONF_KEY_SOURCE, default=KEY_SOURCE_ACCOUNT)] = vol.In(
                 [KEY_SOURCE_ACCOUNT, KEY_SOURCE_MANUAL]
@@ -401,12 +421,13 @@ class SpecializedTurboConfigFlow(ConfigFlow, domain=DOMAIN):
         assert self._address is not None
         data: dict[str, Any] = {
             CONF_ADDRESS: self._address,
-            CONF_PIN: self._pin,
             **key_data,
         }
         if self._advertisement is not None:
-            data[CONF_HMI_HARDWARE] = self._advertisement.hmi_hardware
-            data[CONF_HMI_SERIAL] = self._advertisement.hmi_serial
+            if self._advertisement.hmi_hardware is not None:
+                data[CONF_HMI_HARDWARE] = self._advertisement.hmi_hardware
+            if self._advertisement.hmi_serial is not None:
+                data[CONF_HMI_SERIAL] = self._advertisement.hmi_serial
 
         if self._target_entry_id is not None:
             entry = self.hass.config_entries.async_get_entry(self._target_entry_id)

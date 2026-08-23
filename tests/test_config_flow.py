@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from contextlib import nullcontext
+from unittest.mock import AsyncMock, patch
 
 import pytest
-from bleak import BleakError
 from homeassistant import config_entries
 from homeassistant.const import CONF_ADDRESS
 from homeassistant.core import HomeAssistant
@@ -16,7 +16,6 @@ from custom_components.specialized_turbo.const import (
     CONF_HMI_HARDWARE,
     CONF_HMI_SERIAL,
     CONF_KEY_SOURCE,
-    CONF_PIN,
     CONF_WRAPPED_KEY,
     DOMAIN,
     KEY_SOURCE_ACCOUNT,
@@ -29,8 +28,8 @@ from .conftest import (
     MOCK_ENCRYPTED_MANUFACTURER_DATA,
     MOCK_GEN1_ADDRESS,
     MOCK_NAME,
-    make_tcu1_service_info,
     make_service_info,
+    make_tcu1_service_info,
     make_wrapped_key,
 )
 
@@ -47,18 +46,13 @@ def mock_setup_entry():
 
 def _mock_connection_success():
     """Return context managers for a successful BLE connection test."""
-    mock_client = MagicMock()
-    mock_client.disconnect = AsyncMock()
     return (
         patch(
-            "custom_components.specialized_turbo.config_flow.async_ble_device_from_address",
-            return_value=MagicMock(),
-        ),
-        patch(
-            "custom_components.specialized_turbo.config_flow.establish_connection",
+            "custom_components.specialized_turbo.config_flow.SpecializedTurboConfigFlow._async_test_connection",
             new_callable=AsyncMock,
-            return_value=mock_client,
+            return_value=True,
         ),
+        nullcontext(),
     )
 
 
@@ -66,44 +60,22 @@ def _mock_connection_failure_no_device():
     """Return context managers for a failed BLE connection (device not found)."""
     return (
         patch(
-            "custom_components.specialized_turbo.config_flow.async_ble_device_from_address",
-            return_value=None,
-        ),
-        patch(
-            "custom_components.specialized_turbo.config_flow.establish_connection",
+            "custom_components.specialized_turbo.config_flow.SpecializedTurboConfigFlow._async_test_connection",
             new_callable=AsyncMock,
+            return_value=False,
         ),
+        nullcontext(),
     )
 
 
 def _mock_connection_failure_bleak_error():
-    """Return context managers for a failed BLE connection (BleakError)."""
-    return (
-        patch(
-            "custom_components.specialized_turbo.config_flow.async_ble_device_from_address",
-            return_value=MagicMock(),
-        ),
-        patch(
-            "custom_components.specialized_turbo.config_flow.establish_connection",
-            new_callable=AsyncMock,
-            side_effect=BleakError("Connection failed"),
-        ),
-    )
+    """Return context managers for a failed BLE connection."""
+    return _mock_connection_failure_no_device()
 
 
 def _mock_connection_failure_timeout():
-    """Return context managers for a failed BLE connection (TimeoutError)."""
-    return (
-        patch(
-            "custom_components.specialized_turbo.config_flow.async_ble_device_from_address",
-            return_value=MagicMock(),
-        ),
-        patch(
-            "custom_components.specialized_turbo.config_flow.establish_connection",
-            new_callable=AsyncMock,
-            side_effect=TimeoutError,
-        ),
-    )
+    """Return context managers for a timed-out BLE connection."""
+    return _mock_connection_failure_no_device()
 
 
 # --- Bluetooth Discovery ---
@@ -125,17 +97,16 @@ async def test_bluetooth_discovery(hass: HomeAssistant) -> None:
     with p1, p2:
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            user_input={CONF_PIN: "1234"},
+            user_input={},
         )
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["title"] == MOCK_NAME
     assert result["data"]["address"] == MOCK_ADDRESS
-    assert result["data"][CONF_PIN] == "1234"
 
 
-async def test_bluetooth_discovery_no_pin(hass: HomeAssistant) -> None:
-    """Test bluetooth discovery without a PIN."""
+async def test_bluetooth_discovery_stores_only_address(hass: HomeAssistant) -> None:
+    """Test bluetooth discovery does not store pairing material."""
     service_info = make_service_info()
 
     result = await hass.config_entries.flow.async_init(
@@ -152,7 +123,7 @@ async def test_bluetooth_discovery_no_pin(hass: HomeAssistant) -> None:
         )
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"][CONF_PIN] is None
+    assert result["data"] == {CONF_ADDRESS: MOCK_ADDRESS}
 
 
 async def test_encrypted_discovery_uses_account_without_storing_credentials(
@@ -170,7 +141,6 @@ async def test_encrypted_discovery_uses_account_without_storing_credentials(
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={
-            CONF_PIN: "012345",
             CONF_KEY_SOURCE: KEY_SOURCE_ACCOUNT,
         },
     )
@@ -192,9 +162,8 @@ async def test_encrypted_discovery_uses_account_without_storing_credentials(
             result["flow_id"],
             user_input={"email": "rider@example.com", "password": "secret"},
         )
-
     assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"][CONF_PIN] == "012345"
+    assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"][CONF_KEY_SOURCE] == KEY_SOURCE_ACCOUNT
     assert result["data"][CONF_WRAPPED_KEY] == wrapped_key
     assert result["data"][CONF_HMI_HARDWARE] == "B.3.3"
@@ -275,7 +244,7 @@ async def test_bluetooth_confirm_cannot_connect_no_device(
     with p1, p2:
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            user_input={CONF_PIN: "1234"},
+            user_input={},
         )
 
     assert result["type"] is FlowResultType.FORM
@@ -298,7 +267,7 @@ async def test_bluetooth_confirm_cannot_connect_bleak_error(
     with p1, p2:
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            user_input={CONF_PIN: "1234"},
+            user_input={},
         )
 
     assert result["type"] is FlowResultType.FORM
@@ -321,7 +290,7 @@ async def test_bluetooth_confirm_cannot_connect_timeout(
     with p1, p2:
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            user_input={CONF_PIN: "1234"},
+            user_input={},
         )
 
     assert result["type"] is FlowResultType.FORM
@@ -343,7 +312,7 @@ async def test_bluetooth_confirm_recover_from_error(hass: HomeAssistant) -> None
     with p1, p2:
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            user_input={CONF_PIN: "1234"},
+            user_input={},
         )
     assert result["type"] is FlowResultType.FORM
     assert result["errors"] == {"base": "cannot_connect"}
@@ -353,7 +322,7 @@ async def test_bluetooth_confirm_recover_from_error(hass: HomeAssistant) -> None
     with p1, p2:
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            user_input={CONF_PIN: "1234"},
+            user_input={},
         )
     assert result["type"] is FlowResultType.CREATE_ENTRY
 
@@ -381,12 +350,11 @@ async def test_user_flow(hass: HomeAssistant) -> None:
     with p1, p2:
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            user_input={"address": MOCK_ADDRESS, CONF_PIN: "5678"},
+            user_input={"address": MOCK_ADDRESS},
         )
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"]["address"] == MOCK_ADDRESS
-    assert result["data"][CONF_PIN] == "5678"
 
 
 async def test_user_flow_no_devices(hass: HomeAssistant) -> None:
@@ -422,7 +390,7 @@ async def test_user_flow_prompts_for_key_source_after_encrypted_selection(
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
-        user_input={CONF_ADDRESS: MOCK_ADDRESS, CONF_PIN: "012345"},
+        user_input={CONF_ADDRESS: MOCK_ADDRESS},
     )
 
     assert result["step_id"] == "key_source"
@@ -476,7 +444,7 @@ async def test_user_flow_cannot_connect(hass: HomeAssistant) -> None:
     ):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            user_input={"address": MOCK_ADDRESS, CONF_PIN: "1234"},
+            user_input={"address": MOCK_ADDRESS},
         )
 
     assert result["type"] is FlowResultType.FORM
@@ -536,20 +504,49 @@ async def test_user_flow_discovers_name_only_wsbc_bike(
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["title"] == "WSBC025079419R"
-    assert result["data"] == {
-        CONF_ADDRESS: MOCK_ADDRESS,
-        CONF_PIN: None,
-    }
+    assert result["data"] == {CONF_ADDRESS: MOCK_ADDRESS}
 
 
 # --- Reconfigure Flow ---
 
 
-async def test_reconfigure_flow(hass: HomeAssistant) -> None:
-    """Test reconfigure flow updates the PIN."""
+async def test_reconfigure_unencrypted_entry_not_supported(
+    hass: HomeAssistant,
+) -> None:
+    """Test reconfiguration is limited to encrypted entries."""
     entry = MockConfigEntry(
         domain=DOMAIN,
-        data={"address": MOCK_ADDRESS, CONF_PIN: 1234},
+        data={"address": MOCK_ADDRESS},
+        unique_id=MOCK_ADDRESS_FORMATTED,
+    )
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={
+            "source": config_entries.SOURCE_RECONFIGURE,
+            "entry_id": entry.entry_id,
+        },
+    )
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "not_encrypted"
+
+
+async def test_reconfigure_replaces_manual_key(hass: HomeAssistant) -> None:
+    """Test reconfigure flow replaces the wrapped key."""
+    old_wrapped_key = make_wrapped_key()
+    new_wrapped_key = make_wrapped_key(
+        bytes.fromhex("ffeeddccbbaa99887766554433221100")
+    )
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_ADDRESS: MOCK_ADDRESS,
+            CONF_HMI_HARDWARE: "3.2.1",
+            CONF_HMI_SERIAL: "123456789",
+            CONF_KEY_SOURCE: KEY_SOURCE_ACCOUNT,
+            CONF_WRAPPED_KEY: old_wrapped_key,
+        },
         unique_id=MOCK_ADDRESS_FORMATTED,
     )
     entry.add_to_hass(hass)
@@ -562,43 +559,28 @@ async def test_reconfigure_flow(hass: HomeAssistant) -> None:
         },
     )
     assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reconfigure"
+    assert result["step_id"] == "key_source"
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
-        user_input={CONF_PIN: "9999"},
+        user_input={CONF_KEY_SOURCE: KEY_SOURCE_MANUAL},
     )
+    assert result["step_id"] == "manual_key"
+
+    with patch(
+        "custom_components.specialized_turbo.config_flow.SpecializedTurboConfigFlow._async_validate_encrypted_connection",
+        new_callable=AsyncMock,
+        return_value=True,
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={CONF_WRAPPED_KEY: new_wrapped_key},
+        )
 
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "reconfigure_successful"
-    assert entry.data[CONF_PIN] == "9999"
-
-
-async def test_reconfigure_flow_remove_pin(hass: HomeAssistant) -> None:
-    """Test reconfigure flow can remove the PIN."""
-    entry = MockConfigEntry(
-        domain=DOMAIN,
-        data={"address": MOCK_ADDRESS, CONF_PIN: 1234},
-        unique_id=MOCK_ADDRESS_FORMATTED,
-    )
-    entry.add_to_hass(hass)
-
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN,
-        context={
-            "source": config_entries.SOURCE_RECONFIGURE,
-            "entry_id": entry.entry_id,
-        },
-    )
-
-    result = await hass.config_entries.flow.async_configure(
-        result["flow_id"],
-        user_input={},
-    )
-
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reconfigure_successful"
-    assert entry.data[CONF_PIN] is None
+    assert entry.data[CONF_KEY_SOURCE] == KEY_SOURCE_MANUAL
+    assert entry.data[CONF_WRAPPED_KEY] == new_wrapped_key
 
 
 async def test_reauth_adds_manual_key(hass: HomeAssistant) -> None:
@@ -609,7 +591,6 @@ async def test_reauth_adds_manual_key(hass: HomeAssistant) -> None:
         version=2,
         data={
             "address": MOCK_ADDRESS,
-            CONF_PIN: "012345",
             CONF_HMI_HARDWARE: "3.2.1",
             CONF_HMI_SERIAL: "123456789",
         },

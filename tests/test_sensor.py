@@ -10,7 +10,6 @@ from custom_components.specialized_turbo.sensor import (
     _assist_level_name,
 )
 
-
 # --- Value function tests ---
 
 

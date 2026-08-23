@@ -7,24 +7,20 @@
         "description": "Select your Specialized Turbo bike from the discovered devices.",
         "data": {
           "address": "Bike",
-          "pin": "Pairing PIN",
           "key_source": "Encryption key source"
         },
         "data_description": {
           "address": "Select the Specialized Turbo bike you want to add.",
-          "pin": "The PIN displayed on the bike's TCU screen during Bluetooth pairing. Leave empty if your bike does not require a PIN.",
           "key_source": "Use your Specialized account to retrieve the bike key automatically, or enter a wrapped key manually."
         }
       },
       "bluetooth_confirm": {
         "title": "Discovered Specialized Turbo Bike",
-        "description": "A Specialized Turbo bike was found at {address} ({name}). Enter the pairing PIN shown on the bike's TCU display to connect.",
+        "description": "A Specialized Turbo bike was found at {address} ({name}). Pairing prompts are handled by the active Bluetooth backend.",
         "data": {
-          "pin": "Pairing PIN",
           "key_source": "Encryption key source"
         },
         "data_description": {
-          "pin": "The PIN displayed on the bike's TCU screen during Bluetooth pairing. Leave empty if your bike does not require a PIN.",
           "key_source": "Use your Specialized account to retrieve the bike key automatically, or enter a wrapped key manually."
         }
       },
@@ -59,13 +55,7 @@
       },
       "reconfigure": {
         "title": "Reconfigure Specialized Turbo",
-        "description": "Update the pairing PIN for your Specialized Turbo bike.",
-        "data": {
-          "pin": "Pairing PIN"
-        },
-        "data_description": {
-          "pin": "The PIN displayed on the bike's TCU screen during Bluetooth pairing. Leave empty if your bike does not require a PIN."
-        }
+        "description": "Replace the encryption key for your Specialized Turbo bike."
       }
     },
     "error": {
@@ -76,7 +66,8 @@
     },
     "abort": {
       "already_configured": "This bike is already configured.",
-      "no_devices_found": "No Specialized Turbo bikes found. Make sure the bike is powered on and Bluetooth is enabled."
+      "no_devices_found": "No Specialized Turbo bikes found. Make sure the bike is powered on and Bluetooth is enabled.",
+      "not_encrypted": "This bike has no stored encryption key to reconfigure."
     }
   },
   "entity": {
