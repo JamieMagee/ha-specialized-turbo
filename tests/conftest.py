@@ -60,6 +60,7 @@ def make_service_info(
     info.manufacturer_data = (
         manufacturer_data if manufacturer_data is not None else MOCK_MANUFACTURER_DATA
     )
+    info.service_uuids = []
     return info
 
 
@@ -77,6 +78,7 @@ def make_tcu1_service_info(
         if manufacturer_data is not None
         else MOCK_GEN1_MANUFACTURER_DATA
     )
+    info.service_uuids = []
     return info
 
 

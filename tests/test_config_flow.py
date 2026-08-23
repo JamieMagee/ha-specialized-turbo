@@ -506,6 +506,42 @@ async def test_user_flow_non_specialized_device_filtered(
     assert result["reason"] == "no_devices_found"
 
 
+async def test_user_flow_discovers_name_only_wsbc_bike(
+    hass: HomeAssistant,
+) -> None:
+    """Test older bikes can be selected from their WSBC local name alone."""
+    service_info = make_service_info(
+        name="WSBC025079419R",
+        manufacturer_data={},
+    )
+
+    with patch(
+        "custom_components.specialized_turbo.config_flow.async_discovered_service_info",
+        return_value=[service_info],
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={"source": config_entries.SOURCE_USER},
+        )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "user"
+
+    p1, p2 = _mock_connection_success()
+    with p1, p2:
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={"address": MOCK_ADDRESS},
+        )
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["title"] == "WSBC025079419R"
+    assert result["data"] == {
+        CONF_ADDRESS: MOCK_ADDRESS,
+        CONF_PIN: None,
+    }
+
+
 # --- Reconfigure Flow ---
 
 

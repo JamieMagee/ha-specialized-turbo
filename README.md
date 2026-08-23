@@ -73,6 +73,10 @@ wrapped key, and HMI identifiers.
 
 If auto-discovery doesn't work, add it manually: Settings > Devices & Services > Add Integration > Specialized Turbo.
 
+Older bikes that advertise only a `WSBC...` local name are supported. The
+integration connects first, then selects the TCU1 or TCX protocol from the
+bike's GATT services.
+
 Some newer bikes use numeric comparison pairing instead of a PIN. On those, pair through your OS Bluetooth settings first, then set up the integration without a PIN.
 
 ## Requirements
