@@ -11,9 +11,11 @@ from bleak.backends.device import BLEDevice
 from bleak.exc import BleakError
 from bleak_retry_connector import establish_connection
 from homeassistant.components.bluetooth import (
+    BluetoothScanningMode,
     BluetoothServiceInfoBleak,
     async_ble_device_from_address,
     async_discovered_service_info,
+    async_process_advertisements,
 )
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
 from homeassistant.const import CONF_ADDRESS, CONF_EMAIL, CONF_PASSWORD
@@ -21,6 +23,7 @@ from homeassistant.helpers.device_registry import format_mac
 from homeassistant.helpers.httpx_client import get_async_client
 
 from specialized_turbo import (
+    NORDIC_COMPANY_ID,
     BikeAdvertisement,
     BikeInfo,
     BLEProfile,
@@ -49,6 +52,8 @@ from .const import (
     KEY_SOURCE_ACCOUNT,
     KEY_SOURCE_MANUAL,
 )
+
+_COMPLETE_ADVERTISEMENT_TIMEOUT = 5
 
 
 class SpecializedTurboConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -189,6 +194,7 @@ class SpecializedTurboConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         errors: dict[str, str] = {}
         if user_input is not None:
+            await self._async_refresh_device_metadata()
             if self._requires_encryption:
                 source = user_input.get(CONF_KEY_SOURCE)
                 if source is None:
@@ -211,6 +217,32 @@ class SpecializedTurboConfigFlow(ConfigFlow, domain=DOMAIN):
             },
             errors=errors,
         )
+
+    async def _async_refresh_device_metadata(self) -> None:
+        """Request a complete modern advertisement before connecting."""
+        assert self._discovery_info is not None
+        assert self._address is not None
+        if (
+            self._bike_info is None
+            or self._bike_info.complete
+            or NORDIC_COMPANY_ID in self._discovery_info.manufacturer_data
+        ):
+            return
+
+        def _has_complete_bike_info(info: BluetoothServiceInfoBleak) -> bool:
+            return parse_bike_info(info.name or "", info.manufacturer_data).complete
+
+        try:
+            service_info = await async_process_advertisements(
+                self.hass,
+                _has_complete_bike_info,
+                {"address": self._address},
+                BluetoothScanningMode.ACTIVE,
+                _COMPLETE_ADVERTISEMENT_TIMEOUT,
+            )
+        except TimeoutError:
+            return
+        self._set_device(service_info)
 
     async def async_step_key_source(
         self,

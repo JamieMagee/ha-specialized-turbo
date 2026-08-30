@@ -507,6 +507,68 @@ async def test_user_flow_discovers_name_only_wsbc_bike(
     assert result["data"] == {CONF_ADDRESS: MOCK_ADDRESS}
 
 
+async def test_name_only_bike_waits_for_complete_advertisement(
+    hass: HomeAssistant,
+) -> None:
+    """Test a name-only bike can reveal its encryption metadata before connect."""
+    name_only = make_service_info(name="WSBC025079419R", manufacturer_data={})
+    complete = make_service_info(
+        name="WSBC025079419R",
+        manufacturer_data=MOCK_ENCRYPTED_MANUFACTURER_DATA,
+    )
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": config_entries.SOURCE_BLUETOOTH},
+        data=name_only,
+    )
+
+    with patch(
+        "custom_components.specialized_turbo.config_flow.async_process_advertisements",
+        new_callable=AsyncMock,
+        return_value=complete,
+    ) as process_advertisements:
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={},
+        )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "key_source"
+    process_advertisements.assert_awaited_once()
+
+
+async def test_name_only_bike_continues_after_advertisement_timeout(
+    hass: HomeAssistant,
+) -> None:
+    """Test a legacy name-only bike can connect without structured metadata."""
+    service_info = make_service_info(name="WSBC025079419R", manufacturer_data={})
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": config_entries.SOURCE_BLUETOOTH},
+        data=service_info,
+    )
+
+    with (
+        patch(
+            "custom_components.specialized_turbo.config_flow.async_process_advertisements",
+            new_callable=AsyncMock,
+            side_effect=TimeoutError,
+        ) as process_advertisements,
+        patch(
+            "custom_components.specialized_turbo.config_flow.SpecializedTurboConfigFlow._async_test_connection",
+            new_callable=AsyncMock,
+            return_value=True,
+        ),
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={},
+        )
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    process_advertisements.assert_awaited_once()
+
+
 # --- Reconfigure Flow ---
 
 
