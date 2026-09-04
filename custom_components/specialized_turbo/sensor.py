@@ -326,7 +326,7 @@ class SpecializedTurboSensor(
             f"{format_mac(entry.data[CONF_ADDRESS])}_{description.key}"
         )
         self._attr_device_info = DeviceInfo(
-            connections={(CONNECTION_BLUETOOTH, entry.data[CONF_ADDRESS])},
+            connections={(CONNECTION_BLUETOOTH, format_mac(entry.data[CONF_ADDRESS]))},
             name=entry.title,
             manufacturer="Specialized",
             model="Turbo",

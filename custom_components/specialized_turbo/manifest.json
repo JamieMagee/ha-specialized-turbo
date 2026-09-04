@@ -66,5 +66,5 @@
   "requirements": [
     "specialized-turbo[cloud]==0.8.3"
   ],
-  "version": "0.6.2"
+  "version": "0.6.3"
 }

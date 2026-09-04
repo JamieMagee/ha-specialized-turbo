@@ -6,7 +6,10 @@ import logging
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_ADDRESS, Platform
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.device_registry import CONNECTION_BLUETOOTH, format_mac
 
 from specialized_turbo import (
     BikeAdvertisement,
@@ -33,6 +36,7 @@ async def async_setup_entry(
 ) -> bool:
     """Set up Specialized Turbo from a config entry."""
     address: str = entry.data[CONF_ADDRESS]
+    _async_migrate_device_registry(hass, entry, address)
     wrapped_key: str | None = entry.data.get(CONF_WRAPPED_KEY)
     hmi_hardware: str | None = entry.data.get(CONF_HMI_HARDWARE)
     hmi_serial: str | None = entry.data.get(CONF_HMI_SERIAL)
@@ -87,6 +91,64 @@ async def async_unload_entry(
         await coordinator.async_shutdown()
 
     return unload_ok
+
+
+@callback
+def _async_migrate_device_registry(
+    hass: HomeAssistant,
+    entry: SpecializedTurboConfigEntry,
+    address: str,
+) -> None:
+    """Normalize legacy HACS Bluetooth connections and merge duplicates."""
+    normalized_address = format_mac(address)
+    device_registry = dr.async_get(hass)
+    matching_devices = [
+        device
+        for device in dr.async_entries_for_config_entry(device_registry, entry.entry_id)
+        if any(
+            connection_type == CONNECTION_BLUETOOTH
+            and format_mac(connection_value) == normalized_address
+            for connection_type, connection_value in device.connections
+        )
+    ]
+    legacy_device = next(
+        (
+            device
+            for device in matching_devices
+            if (CONNECTION_BLUETOOTH, normalized_address) not in device.connections
+        ),
+        None,
+    )
+    if legacy_device is None:
+        return
+
+    entity_registry = er.async_get(hass)
+    for duplicate in matching_devices:
+        if duplicate.id == legacy_device.id:
+            continue
+        for entity in er.async_entries_for_device(
+            entity_registry,
+            duplicate.id,
+            include_disabled_entities=True,
+        ):
+            if entity.config_entry_id == entry.entry_id:
+                entity_registry.async_update_entity(
+                    entity.entity_id,
+                    device_id=legacy_device.id,
+                )
+        device_registry.async_remove_device(duplicate.id)
+
+    legacy_connections = {
+        connection
+        for connection in legacy_device.connections
+        if connection[0] == CONNECTION_BLUETOOTH
+        and format_mac(connection[1]) == normalized_address
+    }
+    device_registry.async_update_device(
+        legacy_device.id,
+        new_connections=(legacy_device.connections - legacy_connections)
+        | {(CONNECTION_BLUETOOTH, normalized_address)},
+    )
 
 
 async def async_migrate_entry(
