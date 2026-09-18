@@ -1,5 +1,14 @@
 # Specialized Turbo for Home Assistant
 
+> [!IMPORTANT]
+> Specialized Turbo is built into Home Assistant Core 2026.9 and later, so this custom integration is deprecated.
+>
+> For setup and troubleshooting, see the [official Specialized Turbo documentation](https://www.home-assistant.io/integrations/specialized_turbo).
+> If you are moving from HACS, follow the [migration instructions](https://www.home-assistant.io/integrations/specialized_turbo#move-from-the-hacs-integration).
+> Do not delete your existing Specialized Turbo configuration entry during migration.
+
+The instructions below cover the old custom integration.
+
 Custom integration that reads telemetry from Specialized Turbo e-bikes over Bluetooth Low Energy. Auto-discovers your bike and exposes 26 sensors.
 
 Supports TCU1, TCX1, TCX2, TCX3, and TCX4 bikes.
